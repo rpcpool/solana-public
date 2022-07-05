@@ -122,13 +122,20 @@ impl BigTableConnection {
     ///
     /// The BIGTABLE_EMULATOR_HOST environment variable is also respected.
     ///
-    pub async fn new(
+    pub async fn new<C>(
         instance_name: &str,
         app_profile_id: &str,
         read_only: bool,
         timeout: Option<Duration>,
         credential_type: CredentialType,
-    ) -> Result<Self> {
+        connector: Option<C>,
+    ) -> Result<Self>
+    where
+        C: tower::make::MakeConnection<tonic::transport::Uri> + Send + 'static,
+        C::Connection: Unpin + Send + 'static,
+        C::Future: Send + 'static,
+        Box<dyn std::error::Error + Send + Sync>: From<C::Error> + Send + 'static,
+    {
         match std::env::var("BIGTABLE_EMULATOR_HOST") {
             Ok(endpoint) => {
                 info!("Connecting to bigtable emulator at {}", endpoint);
@@ -182,7 +189,10 @@ impl BigTableConnection {
 
                 Ok(Self {
                     access_token: Some(access_token),
-                    channel: endpoint.connect_lazy(),
+                    channel: match connector {
+                        Some(connector) => endpoint.connect_with_connector_lazy(connector),
+                        None => endpoint.connect_lazy(),
+                    },
                     table_prefix,
                     app_profile_id: app_profile_id.to_string(),
                     timeout,

@@ -6000,6 +6000,7 @@ dependencies = [
  "flate2",
  "futures 0.3.21",
  "goauth",
+ "hyper",
  "log",
  "openssl",
  "prost 0.10.0",
@@ -6014,6 +6015,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tonic 0.7.1",
+ "tower",
  "zstd",
 ]
 
