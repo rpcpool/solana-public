@@ -358,6 +358,26 @@ impl PubsubClient {
         ))
     }
 
+    async fn subscribe2<'a, T>(&self, operation: &str, params: Value) -> SubscribeResult<'a, serde_json::Result<T>>
+    where
+        T: DeserializeOwned + Send + 'a,
+    {
+        let (response_sender, response_rx) = oneshot::channel();
+        self.subscribe_sender
+            .send((operation.to_string(), params, response_sender))
+            .map_err(|err| PubsubClientError::ConnectionClosed(err.to_string()))?;
+
+        let (notifications, unsubscribe) = response_rx
+            .await
+            .map_err(|err| PubsubClientError::ConnectionClosed(err.to_string()))??;
+        Ok((
+            UnboundedReceiverStream::new(notifications)
+                .map(|value| serde_json::from_value::<T>(value))
+                .boxed(),
+            unsubscribe,
+        ))
+    }
+
     /// Subscribe to account events.
     ///
     /// Receives messages of type [`UiAccount`] when an account's lamports or data changes.
@@ -374,6 +394,15 @@ impl PubsubClient {
     ) -> SubscribeResult<'_, RpcResponse<UiAccount>> {
         let params = json!([pubkey.to_string(), config]);
         self.subscribe("account", params).await
+    }
+ 
+    pub async fn account_subscribe2(
+        &self,
+        pubkey: &Pubkey,
+        config: Option<RpcAccountInfoConfig>,
+    ) -> SubscribeResult<'_, serde_json::Result<RpcResponse<UiAccount>>> {
+        let params = json!([pubkey.to_string(), config]);
+        self.subscribe2("account", params).await
     }
 
     /// Subscribe to block events.
@@ -512,6 +541,10 @@ impl PubsubClient {
     /// [`slotSubscribe`]: https://docs.solana.com/developing/clients/jsonrpc-api#slotsubscribe
     pub async fn slot_subscribe(&self) -> SubscribeResult<'_, SlotInfo> {
         self.subscribe("slot", json!([])).await
+    }
+
+    pub async fn slot_subscribe2(&self) -> SubscribeResult<'_, serde_json::Result<SlotInfo>> {
+        self.subscribe2("slot", json!([])).await
     }
 
     /// Subscribe to slot update events.

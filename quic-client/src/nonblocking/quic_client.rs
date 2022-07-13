@@ -164,14 +164,14 @@ impl Default for QuicLazyInitializedEndpoint {
 /// A wrapper over NewConnection with additional capability to create the endpoint as part
 /// of creating a new connection.
 #[derive(Clone)]
-struct QuicNewConnection {
+pub struct QuicNewConnection {
     endpoint: Arc<Endpoint>,
     connection: Arc<Connection>,
 }
 
 impl QuicNewConnection {
     /// Create a QuicNewConnection given the remote address 'addr'.
-    async fn make_connection(
+    pub async fn make_connection(
         endpoint: Arc<QuicLazyInitializedEndpoint>,
         addr: SocketAddr,
         stats: &ClientStats,
