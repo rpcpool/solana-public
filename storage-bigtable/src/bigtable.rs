@@ -701,6 +701,31 @@ impl<F: FnMut(Request<()>) -> InterceptedRequestResult> BigTable<F> {
             .collect())
     }
 
+    pub async fn get_bincode_cells2<T>(
+        &mut self,
+        table: &str,
+        keys: &[RowKey],
+    ) -> Result<(Vec<(RowKey, Result<T>)>, usize)>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let mut size = 0;
+        let rows = self
+            .get_multi_row_data(table, keys)
+            .await?
+            .into_iter()
+            .map(|(key, row_data)| {
+                size += row_data.len();
+                let key_str = key.to_string();
+                (
+                    key,
+                    deserialize_bincode_cell_data(&row_data, table, key_str),
+                )
+            })
+            .collect();
+        Ok((rows, size))
+    }
+
     pub async fn get_protobuf_or_bincode_cell<B, P>(
         &mut self,
         table: &str,
@@ -735,6 +760,33 @@ impl<F: FnMut(Request<()>) -> InterceptedRequestResult> BigTable<F> {
                 (
                     key,
                     deserialize_protobuf_or_bincode_cell_data(&row_data, table, key_str).unwrap(),
+                )
+            }))
+    }
+
+    pub async fn get_protobuf_or_bincode_cells2<'a, B, P>(
+        &mut self,
+        table: &'a str,
+        row_keys: impl IntoIterator<Item = RowKey>,
+    ) -> Result<impl Iterator<Item = (RowKey, CellData<B, P>, usize)> + 'a>
+    where
+        B: serde::de::DeserializeOwned,
+        P: prost::Message + Default,
+    {
+        Ok(self
+            .get_multi_row_data(
+                table,
+                row_keys.into_iter().collect::<Vec<RowKey>>().as_slice(),
+            )
+            .await?
+            .into_iter()
+            .map(|(key, row_data)| {
+                let size = row_data.iter().fold(0, |acc, row| acc + row.1.len());
+                let key_str = key.to_string();
+                (
+                    key,
+                    deserialize_protobuf_or_bincode_cell_data(&row_data, table, key_str).unwrap(),
+                    size,
                 )
             }))
     }

@@ -661,6 +661,112 @@ impl LedgerStorage {
         }
     }
 
+    // Fetches and gets a vector of confirmed blocks via a multirow fetch
+    pub async fn get_confirmed_blocks_with_data2<'a>(
+        &self,
+        slots: &'a [Slot],
+    ) -> Result<impl Iterator<Item = (Option<(Slot, ConfirmedBlock)>, usize)> + 'a> {
+        debug!(
+            "LedgerStorage::get_confirmed_blocks_with_data request received: {:?}",
+            slots
+        );
+        inc_new_counter_debug!("storage-bigtable-query", 1);
+        let mut bigtable = self.connection.client();
+        let row_keys = slots.iter().copied().map(slot_to_blocks_key);
+        Ok(bigtable
+            .get_protobuf_or_bincode_cells2("blocks", row_keys)
+            .await?
+            .map(
+                |(row_key, block_cell_data, size): (
+                    RowKey,
+                    bigtable::CellData<StoredConfirmedBlock, generated::ConfirmedBlock>,
+                    usize,
+                )| {
+                    let block = match block_cell_data {
+                        bigtable::CellData::Bincode(block) => block.into(),
+                        bigtable::CellData::Protobuf(block) => match block.try_into() {
+                            Ok(block) => block,
+                            Err(_) => return (None, size),
+                        },
+                    };
+                    (Some((key_to_slot(&row_key).unwrap(), block)), size)
+                },
+            ))
+    }
+
+    /// Fetch blocks and transactions
+    pub async fn get_confirmed_blocks_transactions(
+        &self,
+        blocks: &[Slot],
+        transactions: &[String],
+        requests_count: &mut usize,
+    ) -> Result<(
+        Vec<(Slot, ConfirmedBlock)>,
+        Vec<ConfirmedTransactionWithStatusMeta>,
+        usize,
+    )> {
+        let mut bigtable = self.connection.client();
+        let mut size = 0;
+
+        // Collect slots for request
+        let mut blocks_map: HashMap<Slot, Vec<(u32, String)>> = HashMap::new();
+        for block in blocks {
+            blocks_map.entry(*block).or_default();
+        }
+
+        // Fetch transactions info and collect slots
+        if !transactions.is_empty() {
+            *requests_count += 1;
+            let (cells, bt_size) = bigtable
+                .get_bincode_cells2::<TransactionInfo>("tx", transactions)
+                .await?;
+            size += bt_size;
+
+            for cell in cells {
+                if let (signature, Ok(TransactionInfo { slot, index, .. })) = cell {
+                    blocks_map.entry(slot).or_default().push((index, signature));
+                }
+            }
+        }
+
+        // Collect response data
+        let mut blocks_resp = vec![];
+        let mut transactions_resp = vec![];
+
+        // Fetch blocks
+        if !blocks_map.is_empty() {
+            *requests_count += 1;
+            let keys = blocks_map.keys().copied().collect::<Vec<_>>();
+            let cells = self.get_confirmed_blocks_with_data2(&keys).await?;
+            for (maybe_slot_block, row_size) in cells {
+                size += row_size;
+                if let Some((slot, block)) = maybe_slot_block {
+                    if let Some(entries) = blocks_map.get(&slot) {
+                        for (index, signature) in entries.iter() {
+                            if let Some(tx_with_meta) = block.transactions.get(*index as usize) {
+                                if tx_with_meta.transaction_signature().to_string() != *signature {
+                                    warn!(
+                                        "Transaction info or confirmed block for {} is corrupt",
+                                        signature
+                                    );
+                                } else {
+                                    transactions_resp.push(ConfirmedTransactionWithStatusMeta {
+                                        slot,
+                                        tx_with_meta: tx_with_meta.clone(),
+                                        block_time: block.block_time,
+                                    });
+                                }
+                            }
+                        }
+                        blocks_resp.push((slot, block));
+                    }
+                }
+            }
+        }
+
+        Ok((blocks_resp, transactions_resp, size))
+    }
+
     /// Get confirmed signatures for the provided address, in descending ledger order
     ///
     /// address: address to search for
