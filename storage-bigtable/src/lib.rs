@@ -699,13 +699,19 @@ impl LedgerStorage {
         &self,
         blocks: &[Slot],
         transactions: &[String],
+        transactions_status: &[String],
         requests_count: &mut usize,
     ) -> Result<(
         Vec<(Slot, ConfirmedBlock)>,
         Vec<ConfirmedTransactionWithStatusMeta>,
+        HashMap<String, TransactionStatus>,
         usize,
     )> {
         let mut bigtable = self.connection.client();
+
+        let mut blocks_resp = Vec::with_capacity(blocks.len());
+        let mut transactions_resp = Vec::with_capacity(transactions.len());
+        let mut transactions_status_resp = HashMap::new();
         let mut size = 0;
 
         // Collect slots for request
@@ -715,23 +721,43 @@ impl LedgerStorage {
         }
 
         // Fetch transactions info and collect slots
-        if !transactions.is_empty() {
+        if !transactions.is_empty() || !transactions_status.is_empty() {
             *requests_count += 1;
-            let (cells, bt_size) = bigtable
-                .get_bincode_cells2::<TransactionInfo>("tx", transactions)
+
+            let mut keys = Vec::with_capacity(transactions.len() + transactions_status.len());
+            keys.extend(transactions.iter().cloned());
+            keys.extend(transactions_status.iter().cloned());
+
+            let (mut cells, bt_size) = bigtable
+                .get_bincode_cells2::<TransactionInfo>("tx", keys.as_slice())
                 .await?;
             size += bt_size;
 
-            for cell in cells {
-                if let (signature, Ok(TransactionInfo { slot, index, .. })) = cell {
+            for signature in transactions_status {
+                if let Some(Ok(info)) = cells.get(signature) {
+                    transactions_status_resp.insert(
+                        signature.clone(),
+                        TransactionStatus {
+                            slot: info.slot,
+                            confirmations: None,
+                            status: match &info.err {
+                                Some(err) => Err(err.clone()),
+                                None => Ok(()),
+                            },
+                            err: info.err.clone(),
+                            confirmation_status: Some(TransactionConfirmationStatus::Finalized),
+                        },
+                    );
+                }
+            }
+            for signature in transactions {
+                if let Some((signature, Ok(TransactionInfo { slot, index, .. }))) =
+                    cells.remove_entry(signature)
+                {
                     blocks_map.entry(slot).or_default().push((index, signature));
                 }
             }
         }
-
-        // Collect response data
-        let mut blocks_resp = vec![];
-        let mut transactions_resp = vec![];
 
         // Fetch blocks
         if !blocks_map.is_empty() {
@@ -764,7 +790,12 @@ impl LedgerStorage {
             }
         }
 
-        Ok((blocks_resp, transactions_resp, size))
+        Ok((
+            blocks_resp,
+            transactions_resp,
+            transactions_status_resp,
+            size,
+        ))
     }
 
     /// Get confirmed signatures for the provided address, in descending ledger order

@@ -9,6 +9,7 @@ use {
     backoff::{future::retry, ExponentialBackoff},
     log::*,
     std::{
+        collections::HashMap,
         str::FromStr,
         time::{Duration, Instant},
     },
@@ -705,7 +706,7 @@ impl<F: FnMut(Request<()>) -> InterceptedRequestResult> BigTable<F> {
         &mut self,
         table: &str,
         keys: &[RowKey],
-    ) -> Result<(Vec<(RowKey, Result<T>)>, usize)>
+    ) -> Result<(HashMap<RowKey, Result<T>>, usize)>
     where
         T: serde::de::DeserializeOwned,
     {
