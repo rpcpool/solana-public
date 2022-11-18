@@ -700,7 +700,6 @@ impl LedgerStorage {
         blocks: &[Slot],
         transactions: &[String],
         transactions_status: &[String],
-        requests_count: &mut usize,
     ) -> Result<(
         Vec<(Slot, ConfirmedBlock)>,
         Vec<ConfirmedTransactionWithStatusMeta>,
@@ -722,8 +721,6 @@ impl LedgerStorage {
 
         // Fetch transactions info and collect slots
         if !transactions.is_empty() || !transactions_status.is_empty() {
-            *requests_count += 1;
-
             let mut keys = Vec::with_capacity(transactions.len() + transactions_status.len());
             keys.extend(transactions.iter().cloned());
             keys.extend(transactions_status.iter().cloned());
@@ -761,7 +758,6 @@ impl LedgerStorage {
 
         // Fetch blocks
         if !blocks_map.is_empty() {
-            *requests_count += 1;
             let keys = blocks_map.keys().copied().collect::<Vec<_>>();
             let cells = self.get_confirmed_blocks_with_data2(&keys).await?;
             for (maybe_slot_block, row_size) in cells {
