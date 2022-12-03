@@ -8,7 +8,7 @@ extern crate solana_metrics;
 pub mod blockhash_query;
 pub mod client_error;
 pub mod connection_cache;
-pub(crate) mod http_sender;
+pub mod http_sender;
 pub(crate) mod mock_sender;
 pub mod nonblocking;
 pub mod nonce_utils;
