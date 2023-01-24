@@ -794,6 +794,37 @@ impl LedgerStorage {
         ))
     }
 
+    /// Fetch TX index for transactions
+    pub async fn get_txindex(
+        &self,
+        transactions: &[String],
+    ) -> Result<(Vec<Option<(Slot, u32)>>, usize)> {
+        let mut bigtable = self.connection.client();
+
+        let mut response = Vec::with_capacity(transactions.len());
+        let mut size = 0;
+
+        // Fetch transactions info and collect slots
+        if transactions.is_empty() {
+            response.resize(transactions.len(), None);
+        } else {
+            let (cells, bt_size) = bigtable
+                .get_bincode_cells2::<TransactionInfo>("tx", transactions)
+                .await?;
+            size += bt_size;
+
+            for signature in transactions {
+                if let Some(Ok(TransactionInfo { slot, index, .. })) = cells.get(signature) {
+                    response.push(Some((*slot, *index)));
+                } else {
+                    response.push(None);
+                }
+            }
+        }
+
+        Ok((response, size))
+    }
+
     /// Get confirmed signatures for the provided address, in descending ledger order
     ///
     /// address: address to search for
