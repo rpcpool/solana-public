@@ -2600,11 +2600,14 @@ impl ReplayStage {
                 if let Some(ref block_metadata_notifier) = block_metadata_notifier {
                     let block_metadata_notifier = block_metadata_notifier.read().unwrap();
                     block_metadata_notifier.notify_block_metadata(
+                        bank.parent_slot(),
+                        &bank.parent_hash().to_string(),
                         bank.slot(),
                         &bank.last_blockhash().to_string(),
                         &bank.rewards,
                         Some(bank.clock().unix_timestamp),
                         Some(bank.block_height()),
+                        bank.executed_transaction_count(),
                     )
                 }
                 bank_complete_time.stop();

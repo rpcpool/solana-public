@@ -6527,6 +6527,12 @@ impl Bank {
         self.transaction_count.load(Relaxed)
     }
 
+    /// Return the transaction count executed only in this bank
+    pub fn executed_transaction_count(&self) -> u64 {
+        self.transaction_count()
+            .saturating_sub(self.parent().map_or(0, |parent| parent.transaction_count()))
+    }
+
     pub fn transaction_error_count(&self) -> u64 {
         self.transaction_error_count.load(Relaxed)
     }
