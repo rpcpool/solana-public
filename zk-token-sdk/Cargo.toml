@@ -8,7 +8,7 @@ license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
-base64 = "0.13"
+base64 = "0.21"
 bytemuck = { version = "1.11.0", features = ["derive"] }
 num-derive = "0.3"
 num-traits = "0.2"
