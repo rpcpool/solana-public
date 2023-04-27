@@ -79,6 +79,16 @@ impl std::convert::From<std::io::Error> for Error {
     }
 }
 
+impl Error {
+    pub fn is_rpc_unauthenticated(&self) -> bool {
+        if let Error::BigTableError(bigtable::Error::Rpc(status)) = self {
+            status.code() == tonic::Code::Unauthenticated
+        } else {
+            false
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 // Convert a slot to its bucket representation whereby lower slots are always lexically ordered
