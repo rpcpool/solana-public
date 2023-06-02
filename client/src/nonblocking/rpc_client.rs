@@ -163,6 +163,13 @@ impl RpcClient {
         }
     }
 
+    pub fn new_with_header(url: String, name: &str, value: &str) -> Self {
+        Self::new_sender(
+            HttpSender::new_with_header(url, Duration::from_secs(30), Some((name, value))),
+            RpcClientConfig::with_commitment(CommitmentConfig::default()),
+        )
+    }
+
     /// Create an HTTP `RpcClient`.
     ///
     /// The URL is an HTTP URL, usually for port 8899, as in

@@ -46,7 +46,17 @@ impl HttpSender {
     ///
     /// The URL is an HTTP URL, usually for port 8899.
     pub fn new_with_timeout<U: ToString>(url: U, timeout: Duration) -> Self {
+        Self::new_with_header(url.to_string(), timeout, None)
+    }
+
+    pub fn new_with_header(url: String, timeout: Duration, custom_header: Option<(&str, &str)>) -> Self {
         let mut default_headers = header::HeaderMap::new();
+        if let Some((name, value)) = custom_header {
+            default_headers.append(
+                header::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                header::HeaderValue::from_bytes(value.as_bytes()).unwrap(),
+            );
+        }
         default_headers.append(
             header::HeaderName::from_static("solana-client"),
             header::HeaderValue::from_str(
