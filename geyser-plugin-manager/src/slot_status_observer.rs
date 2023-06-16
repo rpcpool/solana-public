@@ -52,24 +52,16 @@ impl SlotStatusObserver {
             .spawn(move || {
                 while !exit.load(Ordering::Relaxed) {
                     if let Ok(slot) = bank_notification_receiver.recv() {
+                        let notifier = slot_status_notifier.read().unwrap();
                         match slot {
-                            SlotNotification::OptimisticallyConfirmed(slot) => {
-                                slot_status_notifier
-                                    .read()
-                                    .unwrap()
-                                    .notify_slot_confirmed(slot, None);
+                            SlotNotification::OptimisticallyConfirmed(bank) => {
+                                notifier.notify_slot_confirmed(bank.slot(), Some(bank));
                             }
-                            SlotNotification::Frozen((slot, parent)) => {
-                                slot_status_notifier
-                                    .read()
-                                    .unwrap()
-                                    .notify_slot_processed(slot, Some(parent));
+                            SlotNotification::Frozen(bank) => {
+                                notifier.notify_slot_processed(bank.slot(), Some(bank));
                             }
-                            SlotNotification::Root((slot, parent)) => {
-                                slot_status_notifier
-                                    .read()
-                                    .unwrap()
-                                    .notify_slot_rooted(slot, Some(parent));
+                            SlotNotification::Root(bank) => {
+                                notifier.notify_slot_rooted(bank.slot(), Some(bank));
                             }
                         }
                     }

@@ -48,11 +48,11 @@ pub enum BankNotification {
 
 #[derive(Clone, Debug)]
 pub enum SlotNotification {
-    OptimisticallyConfirmed(Slot),
+    OptimisticallyConfirmed(Arc<Bank>),
     /// The (Slot, Parent Slot) pair for the slot frozen
-    Frozen((Slot, Slot)),
+    Frozen(Arc<Bank>),
     /// The (Slot, Parent Slot) pair for the root slot
-    Root((Slot, Slot)),
+    Root(Arc<Bank>),
 }
 
 impl std::fmt::Debug for BankNotification {
@@ -186,7 +186,7 @@ impl OptimisticallyConfirmedBankTracker {
                 *last_notified_confirmed_slot = bank.slot();
                 Self::notify_slot_status(
                     slot_notification_subscribers,
-                    SlotNotification::OptimisticallyConfirmed(bank.slot()),
+                    SlotNotification::OptimisticallyConfirmed(bank.clone()),
                 );
             }
         } else if bank.slot() > bank_forks.read().unwrap().root_bank().slot() {
@@ -225,6 +225,7 @@ impl OptimisticallyConfirmedBankTracker {
     fn notify_new_root_slots(
         roots: &mut Vec<Slot>,
         newest_root_slot: &mut Slot,
+        bank_forks: &Arc<RwLock<BankForks>>,
         slot_notification_subscribers: &Option<Arc<RwLock<Vec<SlotNotificationSender>>>>,
     ) {
         if slot_notification_subscribers.is_none() {
@@ -241,10 +242,13 @@ impl OptimisticallyConfirmedBankTracker {
                     "Doing SlotNotification::Root for root {}, parent: {}",
                     root, parent
                 );
-                Self::notify_slot_status(
-                    slot_notification_subscribers,
-                    SlotNotification::Root((root, parent)),
-                );
+                match bank_forks.read().unwrap().get(root) {
+                    Some(bank) => Self::notify_slot_status(
+                        slot_notification_subscribers,
+                        SlotNotification::Root(bank),
+                    ),
+                    None => error!("Bank not found at slot: {:?}", root),
+                }
                 *newest_root_slot = root;
             }
         }
@@ -319,7 +323,7 @@ impl OptimisticallyConfirmedBankTracker {
 
                     Self::notify_slot_status(
                         slot_notification_subscribers,
-                        SlotNotification::Frozen((bank.slot(), bank.parent_slot())),
+                        SlotNotification::Frozen(bank.clone()),
                     );
                 }
 
@@ -362,6 +366,7 @@ impl OptimisticallyConfirmedBankTracker {
                 Self::notify_new_root_slots(
                     &mut roots,
                     newest_root_slot,
+                    bank_forks,
                     slot_notification_subscribers,
                 );
             }
