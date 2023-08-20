@@ -5,7 +5,7 @@ use {
 };
 
 pub trait EntryNotifier {
-    fn notify_entry(&self, slot: Slot, index: usize, entry: &EntrySummary);
+    fn notify_entry(&self, slot: Slot, index: usize, entry: &EntrySummary, last_one: bool);
 }
 
 pub type EntryNotifierLock = Arc<RwLock<dyn EntryNotifier + Sync + Send>>;

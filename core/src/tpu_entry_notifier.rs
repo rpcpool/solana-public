@@ -78,6 +78,7 @@ impl TpuEntryNotifier {
             slot,
             index,
             entry: entry_summary,
+            last_one: bank.is_complete(),
         }) {
             warn!(
                 "Failed to send slot {slot:?} entry {index:?} from Tpu to EntryNotifierService, error {err:?}",

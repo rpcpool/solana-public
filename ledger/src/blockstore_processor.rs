@@ -1148,6 +1148,7 @@ fn confirm_slot_entries(
                     slot,
                     index: entry_index,
                     entry: entry.into(),
+                    last_one: i + 1 == num_entries && bank.is_complete(),
                 }) {
                     warn!(
                         "Slot {}, entry {} entry_notification_sender send failed: {:?}",
