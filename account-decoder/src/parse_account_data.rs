@@ -1,3 +1,5 @@
+use crate::parse_token::{spl_token_native_mint_program_id, spl_token_2022_mint_program_id};
+
 use {
     crate::{
         parse_address_lookup_table::parse_address_lookup_table,
@@ -34,8 +36,8 @@ lazy_static! {
         );
         m.insert(*CONFIG_PROGRAM_ID, ParsableAccount::Config);
         m.insert(*SYSTEM_PROGRAM_ID, ParsableAccount::Nonce);
-        m.insert(spl_token::id(), ParsableAccount::SplToken);
-        m.insert(spl_token_2022::id(), ParsableAccount::SplToken2022);
+        m.insert(spl_token_native_mint_program_id(), ParsableAccount::SplToken);
+        m.insert(spl_token_2022_mint_program_id(), ParsableAccount::SplToken2022);
         m.insert(*STAKE_PROGRAM_ID, ParsableAccount::Stake);
         m.insert(*SYSVAR_PROGRAM_ID, ParsableAccount::Sysvar);
         m.insert(*VOTE_PROGRAM_ID, ParsableAccount::Vote);
