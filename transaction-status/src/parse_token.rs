@@ -1,3 +1,5 @@
+use solana_account_decoder::parse_token::pubkey_from_spl_token;
+
 use {
     crate::parse_instruction::{
         check_num_accounts, ParsableProgram, ParseInstructionError, ParsedInstructionEnum,
@@ -784,12 +786,12 @@ fn check_num_token_accounts(accounts: &[u8], num: usize) -> Result<(), ParseInst
 #[deprecated(since = "1.16.0", note = "Instruction conversions no longer needed")]
 pub fn spl_token_instruction(instruction: SplTokenInstruction) -> Instruction {
     Instruction {
-        program_id: instruction.program_id,
+        program_id: pubkey_from_spl_token(&instruction.program_id),
         accounts: instruction
             .accounts
             .iter()
             .map(|meta| AccountMeta {
-                pubkey: meta.pubkey,
+                pubkey: pubkey_from_spl_token(&meta.pubkey),
                 is_signer: meta.is_signer,
                 is_writable: meta.is_writable,
             })
