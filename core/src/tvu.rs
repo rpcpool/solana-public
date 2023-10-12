@@ -49,7 +49,10 @@ use {
         commitment::BlockCommitmentCache, prioritization_fee_cache::PrioritizationFeeCache,
         vote_sender_types::ReplayVoteSender,
     },
-    solana_sdk::{clock::Slot, pubkey::Pubkey, signature::Keypair},
+    solana_sdk::{
+        clock::Slot, pubkey::Pubkey, signature::Keypair,
+        transaction::BankingTransactionResultNotifierLock,
+    },
     std::{
         collections::HashSet,
         net::UdpSocket,
@@ -138,6 +141,7 @@ impl Tvu {
         connection_cache: &Arc<ConnectionCache>,
         prioritization_fee_cache: &Arc<PrioritizationFeeCache>,
         banking_tracer: Arc<BankingTracer>,
+        banking_transaction_result_notifier: Option<BankingTransactionResultNotifierLock>,
     ) -> Result<Self, String> {
         let TvuSockets {
             repair: repair_socket,
@@ -253,6 +257,7 @@ impl Tvu {
             tower_storage: tower_storage.clone(),
             wait_to_vote_slot,
             replay_slots_concurrently: tvu_config.replay_slots_concurrently,
+            banking_transaction_result_notifier,
         };
 
         let (voting_sender, voting_receiver) = unbounded();
@@ -483,6 +488,7 @@ pub mod tests {
             &Arc::new(ConnectionCache::new("connection_cache_test")),
             &ignored_prioritization_fee_cache,
             BankingTracer::new_disabled(),
+            None,
         )
         .expect("assume success");
         exit.store(true, Ordering::Relaxed);
