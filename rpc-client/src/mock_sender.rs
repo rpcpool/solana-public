@@ -226,6 +226,8 @@ impl RpcSender for MockSender {
                             fee: 0,
                             pre_balances: vec![499999999999999950, 50, 1],
                             post_balances: vec![499999999999999950, 50, 1],
+                            pre_datum: None,
+                            post_datum: None,
                             inner_instructions: OptionSerializer::None,
                             log_messages: OptionSerializer::None,
                             pre_token_balances: OptionSerializer::None,
