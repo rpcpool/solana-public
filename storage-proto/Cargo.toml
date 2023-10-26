@@ -19,7 +19,7 @@ solana-sdk = { path = "../sdk", version = "=1.14.18" }
 solana-transaction-status = { path = "../transaction-status", version = "=1.14.18" }
 
 [dev-dependencies]
-enum-iterator = "0.8.1"
+enum-iterator = "1.4.0"
 
 [lib]
 crate-type = ["lib"]
