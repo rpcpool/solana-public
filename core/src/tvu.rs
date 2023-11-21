@@ -51,7 +51,7 @@ use {
     },
     solana_sdk::{
         clock::Slot, pubkey::Pubkey, signature::Keypair,
-        transaction::BankingTransactionResultNotifierLock,
+        transaction::BankingTransactionResultNotifier,
     },
     std::{
         collections::HashSet,
@@ -141,7 +141,7 @@ impl Tvu {
         connection_cache: &Arc<ConnectionCache>,
         prioritization_fee_cache: &Arc<PrioritizationFeeCache>,
         banking_tracer: Arc<BankingTracer>,
-        banking_transaction_result_notifier: Option<BankingTransactionResultNotifierLock>,
+        banking_transaction_result_notifier: Option<BankingTransactionResultNotifier>,
     ) -> Result<Self, String> {
         let TvuSockets {
             repair: repair_socket,
