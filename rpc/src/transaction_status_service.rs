@@ -70,6 +70,7 @@ impl TransactionStatusService {
                 bank,
                 transactions,
                 execution_results,
+                datum,
                 balances,
                 token_balances,
                 rent_debits,
@@ -81,6 +82,8 @@ impl TransactionStatusService {
                     execution_result,
                     pre_balances,
                     post_balances,
+                    pre_datum,
+                    post_datum,
                     pre_token_balances,
                     post_token_balances,
                     rent_debits,
@@ -90,6 +93,8 @@ impl TransactionStatusService {
                     execution_results,
                     balances.pre_balances,
                     balances.post_balances,
+                    datum.pre_datum,
+                    datum.post_datum,
                     token_balances.pre_token_balances,
                     token_balances.post_token_balances,
                     rent_debits,
@@ -159,6 +164,8 @@ impl TransactionStatusService {
                             fee,
                             pre_balances,
                             post_balances,
+                            pre_datum: Some(pre_datum),
+                            post_datum: Some(post_datum),
                             inner_instructions,
                             log_messages,
                             pre_token_balances,
@@ -228,7 +235,7 @@ pub(crate) mod tests {
         solana_account_decoder::parse_token::token_amount_to_ui_amount,
         solana_ledger::{genesis_utils::create_genesis_config, get_tmp_ledger_path},
         solana_runtime::{
-            bank::{Bank, NonceFull, NoncePartial, TransactionBalancesSet},
+            bank::{Bank, NonceFull, NoncePartial, TransactionBalancesSet, TransactionDatumSet},
             rent_debits::RentDebits,
         },
         solana_sdk::{
@@ -424,6 +431,10 @@ pub(crate) mod tests {
         let transaction_index: usize = bank.transaction_count().try_into().unwrap();
         let transaction_status_batch = TransactionStatusBatch {
             bank,
+            datum: TransactionDatumSet {
+                post_datum: vec![vec![Some(vec![0x69])]],
+                pre_datum: vec![vec![Some(vec![0x04, 0x20])]],
+            },
             transactions: vec![transaction],
             execution_results: vec![transaction_result],
             balances,

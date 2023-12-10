@@ -52,6 +52,7 @@ pub mod non_circulating_supply;
 pub mod partitioned_rewards;
 pub mod prioritization_fee;
 pub mod prioritization_fee_cache;
+pub mod program_inclusions;
 mod pubkey_bins;
 mod read_only_accounts_cache;
 pub mod rent_collector;

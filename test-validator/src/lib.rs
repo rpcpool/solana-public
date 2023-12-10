@@ -30,7 +30,8 @@ use {
     solana_runtime::{
         accounts_db::AccountsDbConfig, accounts_index::AccountsIndexConfig, bank_forks::BankForks,
         genesis_utils::create_genesis_config_with_leader_ex,
-        hardened_unpack::MAX_GENESIS_ARCHIVE_UNPACKED_SIZE, runtime_config::RuntimeConfig,
+        hardened_unpack::MAX_GENESIS_ARCHIVE_UNPACKED_SIZE,
+        program_inclusions::load_datum_program_inclusions, runtime_config::RuntimeConfig,
         snapshot_config::SnapshotConfig, snapshot_utils::create_accounts_run_and_snapshot_dirs,
     },
     solana_sdk::{
@@ -905,6 +906,10 @@ impl TestValidator {
             ..AccountsDbConfig::default()
         });
 
+        let program_datum_inclusions = Arc::new(load_datum_program_inclusions(
+            &config.geyser_plugin_config_files,
+        ));
+
         let runtime_config = RuntimeConfig {
             compute_budget: config
                 .compute_unit_limit
@@ -914,6 +919,7 @@ impl TestValidator {
                 }),
             log_messages_bytes_limit: config.log_messages_bytes_limit,
             transaction_account_lock_limit: config.transaction_account_lock_limit,
+            program_datum_inclusions,
         };
 
         let mut validator_config = ValidatorConfig {

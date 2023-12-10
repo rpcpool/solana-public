@@ -63,6 +63,7 @@ use {
         inline_spl_token,
         message_processor::MessageProcessor,
         partitioned_rewards::PartitionedEpochRewardsConfig,
+        program_inclusions::{PreOrPostDatum, ProgramDatumInclusions},
         rent_collector::{CollectedInfo, RentCollector},
         rent_debits::RentDebits,
         runtime_config::RuntimeConfig,
@@ -422,6 +423,22 @@ impl TransactionBalancesSet {
     }
 }
 pub type TransactionBalances = Vec<Vec<u64>>;
+
+pub struct TransactionDatumSet {
+    pub pre_datum: TransactionDatum,
+    pub post_datum: TransactionDatum,
+}
+
+impl TransactionDatumSet {
+    pub fn new(pre_datum: TransactionDatum, post_datum: TransactionDatum) -> Self {
+        assert_eq!(pre_datum.len(), post_datum.len());
+        Self {
+            pre_datum,
+            post_datum,
+        }
+    }
+}
+pub type TransactionDatum = Vec<Vec<Option<Vec<u8>>>>;
 
 /// An ordered list of compiled instructions that were invoked during a
 /// transaction instruction
@@ -800,6 +817,7 @@ impl PartialEq for Bank {
             loaded_programs_cache: _,
             check_program_modification_slot: _,
             epoch_reward_status: _,
+            program_datum_inclusions: _,
             // Ignore new fields explicitly if they do not impact PartialEq.
             // Adding ".." will remove compile-time checks that if a new field
             // is added to the struct, this PartialEq is accordingly updated.
@@ -1072,6 +1090,8 @@ pub struct Bank {
     bank_freeze_or_destruction_incremented: AtomicBool,
 
     epoch_reward_status: EpochRewardStatus,
+    /// programs that will have their account data sent to geyser
+    pub program_datum_inclusions: Arc<ProgramDatumInclusions>,
 }
 
 struct VoteWithStakeDelegations {
@@ -1293,6 +1313,7 @@ impl Bank {
             loaded_programs_cache: Arc::<RwLock<LoadedPrograms>>::default(),
             check_program_modification_slot: false,
             epoch_reward_status: EpochRewardStatus::default(),
+            program_datum_inclusions: Arc::<ProgramDatumInclusions>::default(),
         };
 
         bank.bank_created();
@@ -1364,6 +1385,7 @@ impl Bank {
             exit,
         );
         let mut bank = Self::default_with_accounts(accounts);
+        bank.program_datum_inclusions = runtime_config.program_datum_inclusions.clone();
         bank.ancestors = Ancestors::from(vec![bank.slot()]);
         bank.transaction_debug_keys = debug_keys;
         bank.runtime_config = runtime_config;
@@ -1606,6 +1628,7 @@ impl Bank {
             loaded_programs_cache: parent.loaded_programs_cache.clone(),
             check_program_modification_slot: false,
             epoch_reward_status: parent.epoch_reward_status.clone(),
+            program_datum_inclusions: parent.program_datum_inclusions.clone(),
         };
 
         let (_, ancestors_time_us) = measure_us!({
@@ -1886,6 +1909,7 @@ impl Bank {
             T::default()
         }
         let feature_set = new();
+        let program_datum_inclusions = runtime_config.program_datum_inclusions.clone();
         let mut bank = Self {
             incremental_snapshot_persistence: fields.incremental_snapshot_persistence,
             bank_freeze_or_destruction_incremented: AtomicBool::default(),
@@ -1948,6 +1972,7 @@ impl Bank {
             loaded_programs_cache: Arc::<RwLock<LoadedPrograms>>::default(),
             check_program_modification_slot: false,
             epoch_reward_status: EpochRewardStatus::default(),
+            program_datum_inclusions,
         };
         bank.bank_created();
 
@@ -3924,6 +3949,27 @@ impl Bank {
         balances
     }
 
+    pub fn collect_balances_and_datum(
+        &self,
+        batch: &TransactionBatch,
+        pre_or_post: PreOrPostDatum,
+    ) -> (TransactionBalances, TransactionDatum) {
+        let mut balances: TransactionBalances = vec![];
+        let mut datum: TransactionDatum = vec![];
+        for transaction in batch.sanitized_transactions() {
+            let mut transaction_balances: Vec<u64> = vec![];
+            let mut transaction_datum: Vec<Option<Vec<u8>>> = vec![];
+            for account_key in transaction.message().account_keys().iter() {
+                let (balance, data) = self.get_balance_and_data(account_key, &pre_or_post);
+                transaction_balances.push(balance);
+                transaction_datum.push(data);
+            }
+            balances.push(transaction_balances);
+            datum.push(transaction_datum);
+        }
+        (balances, datum)
+    }
+
     fn program_modification_slot(&self, pubkey: &Pubkey) -> Result<Slot> {
         let program = self
             .get_account_with_fixed_root(pubkey)
@@ -5817,11 +5863,15 @@ impl Bank {
         enable_return_data_recording: bool,
         timings: &mut ExecuteTimings,
         log_messages_bytes_limit: Option<usize>,
-    ) -> (TransactionResults, TransactionBalancesSet) {
-        let pre_balances = if collect_balances {
-            self.collect_balances(batch)
+    ) -> (
+        TransactionResults,
+        TransactionBalancesSet,
+        TransactionDatumSet,
+    ) {
+        let (pre_balances, pre_datum) = if collect_balances {
+            self.collect_balances_and_datum(batch, PreOrPostDatum::PreDatum)
         } else {
-            vec![]
+            (vec![], vec![])
         };
 
         let LoadAndExecuteTransactionsOutput {
@@ -5861,14 +5911,15 @@ impl Bank {
             },
             timings,
         );
-        let post_balances = if collect_balances {
-            self.collect_balances(batch)
+        let (post_balances, post_datum) = if collect_balances {
+            self.collect_balances_and_datum(batch, PreOrPostDatum::PostDatum)
         } else {
-            vec![]
+            (vec![], vec![])
         };
         (
             results,
             TransactionBalancesSet::new(pre_balances, post_balances),
+            TransactionDatumSet::new(pre_datum, post_datum),
         )
     }
 
@@ -5987,12 +6038,43 @@ impl Bank {
     pub fn read_balance(account: &AccountSharedData) -> u64 {
         account.lamports()
     }
+
+    pub fn read_data(
+        &self,
+        account: &AccountSharedData,
+        pre_or_post: &PreOrPostDatum,
+    ) -> Option<Vec<u8>> {
+        let data = account.data();
+        let owner = account.owner();
+        let inclusion = self.program_datum_inclusions.get(owner)?;
+        let include_data = inclusion.can_include_datum(pre_or_post, &data);
+
+        if !include_data {
+            None
+        } else {
+            Some(data.to_vec())
+        }
+    }
     /// Each program would need to be able to introspect its own state
     /// this is hard-coded to the Budget language
     pub fn get_balance(&self, pubkey: &Pubkey) -> u64 {
         self.get_account(pubkey)
             .map(|x| Self::read_balance(&x))
             .unwrap_or(0)
+    }
+    pub fn get_balance_and_data(
+        &self,
+        pubkey: &Pubkey,
+        pre_or_post: &PreOrPostDatum,
+    ) -> (u64, Option<Vec<u8>>) {
+        self.get_account(pubkey)
+            .map(|x| {
+                (
+                    Self::read_balance(&x),
+                    Self::read_data(self, &x, pre_or_post),
+                )
+            })
+            .unwrap_or((0, None))
     }
 
     /// Compute all the parents of the bank in order

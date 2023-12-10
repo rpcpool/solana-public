@@ -331,6 +331,11 @@ pub struct TransactionStatusMeta {
     pub fee: u64,
     pub pre_balances: Vec<u64>,
     pub post_balances: Vec<u64>,
+    //the first Option is for backward compat
+    //the inner Option is for if we filtered out the datum (exceeds max size)
+    //if account data is empty, that is "", not None
+    pub pre_datum: Option<Vec<Option<Vec<u8>>>>,
+    pub post_datum: Option<Vec<Option<Vec<u8>>>>,
     pub inner_instructions: Option<Vec<InnerInstructions>>,
     pub log_messages: Option<Vec<String>>,
     pub pre_token_balances: Option<Vec<TransactionTokenBalance>>,
@@ -348,6 +353,8 @@ impl Default for TransactionStatusMeta {
             fee: 0,
             pre_balances: vec![],
             post_balances: vec![],
+            pre_datum: None,
+            post_datum: None,
             inner_instructions: None,
             log_messages: None,
             pre_token_balances: None,
@@ -369,6 +376,11 @@ pub struct UiTransactionStatusMeta {
     pub fee: u64,
     pub pre_balances: Vec<u64>,
     pub post_balances: Vec<u64>,
+    //the first Option is for backward compat
+    //the inner Option is for if we filtered out the datum (exceeds max size)
+    //if account data is empty, that is "", not None
+    pub pre_datum: Option<Vec<Option<String>>>,
+    pub post_datum: Option<Vec<Option<String>>>,
     #[serde(
         default = "OptionSerializer::none",
         skip_serializing_if = "OptionSerializer::should_skip"
@@ -445,6 +457,18 @@ impl UiTransactionStatusMeta {
             fee: meta.fee,
             pre_balances: meta.pre_balances,
             post_balances: meta.post_balances,
+            pre_datum: meta.pre_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
+            post_datum: meta.post_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
             inner_instructions: meta
                 .inner_instructions
                 .map(|ixs| {
@@ -478,6 +502,18 @@ impl UiTransactionStatusMeta {
             fee: meta.fee,
             pre_balances: meta.pre_balances,
             post_balances: meta.post_balances,
+            pre_datum: meta.pre_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
+            post_datum: meta.post_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
             inner_instructions: OptionSerializer::Skip,
             log_messages: OptionSerializer::Skip,
             pre_token_balances: meta
@@ -508,6 +544,18 @@ impl From<TransactionStatusMeta> for UiTransactionStatusMeta {
             fee: meta.fee,
             pre_balances: meta.pre_balances,
             post_balances: meta.post_balances,
+            pre_datum: meta.pre_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
+            post_datum: meta.post_datum.map(|a| {
+                a.into_iter()
+                    .map(|b| b.map(|c| BASE64_STANDARD.encode(c)))
+                    .into_iter()
+                    .collect()
+            }),
             inner_instructions: meta
                 .inner_instructions
                 .map(|ixs| ixs.into_iter().map(Into::into).collect())
@@ -1015,7 +1063,7 @@ impl ConfirmedTransactionWithStatusMeta {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncodedConfirmedTransactionWithStatusMeta {
     pub slot: Slot,
@@ -1486,6 +1534,8 @@ mod test {
             fee: 1234,
             pre_balances: vec![1, 2, 3],
             post_balances: vec![4, 5, 6],
+            pre_datum: None,
+            post_datum: None,
             inner_instructions: None,
             log_messages: None,
             pre_token_balances: None,

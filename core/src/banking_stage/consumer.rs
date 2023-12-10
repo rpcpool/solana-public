@@ -21,6 +21,7 @@ use {
     solana_program_runtime::timings::ExecuteTimings,
     solana_runtime::{
         bank::{Bank, LoadAndExecuteTransactionsOutput, TransactionCheckResult},
+        program_inclusions::PreOrPostDatum,
         transaction_batch::TransactionBatch,
         transaction_error_metrics::TransactionErrorMetrics,
     },
@@ -537,7 +538,8 @@ impl Consumer {
             // If the extra meta-data services are enabled for RPC, collect the
             // pre-balances for native and token programs.
             if transaction_status_sender_enabled {
-                pre_balance_info.native = bank.collect_balances(batch);
+                (pre_balance_info.native, pre_balance_info.datum) =
+                    bank.collect_balances_and_datum(batch, PreOrPostDatum::PreDatum);
                 pre_balance_info.token =
                     collect_token_balances(bank, batch, &mut pre_balance_info.mint_decimals)
             }
