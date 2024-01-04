@@ -1,3 +1,5 @@
+use solana_sdk::{compute_budget::{self, ComputeBudgetInstruction}, borsh0_10::try_from_slice_unchecked};
+
 use {
     super::{
         committer::{CommitTransactionDetails, Committer},
@@ -66,6 +68,8 @@ pub struct ExecuteAndCommitTransactionsOutput {
     pub commit_transactions_result: Result<Vec<CommitTransactionDetails>, PohRecorderError>,
     execute_and_commit_timings: LeaderExecuteAndCommitTimings,
     error_counters: TransactionErrorMetrics,
+    scheduled_min_prioritization_fees: usize,
+    scheduled_max_prioritization_fees: usize,
 }
 
 pub struct Consumer {
@@ -295,6 +299,8 @@ impl Consumer {
         let mut total_execute_and_commit_timings = LeaderExecuteAndCommitTimings::default();
         let mut total_error_counters = TransactionErrorMetrics::default();
         let mut reached_max_poh_height = false;
+        let mut total_scheduled_min_prioritization_fees: usize = usize::MAX;
+        let mut total_scheduled_max_prioritization_fees: usize = 0;
         while chunk_start != transactions.len() {
             let chunk_end = std::cmp::min(
                 transactions.len(),
@@ -325,6 +331,8 @@ impl Consumer {
                 commit_transactions_result: new_commit_transactions_result,
                 execute_and_commit_timings: new_execute_and_commit_timings,
                 error_counters: new_error_counters,
+                scheduled_min_prioritization_fees,
+                scheduled_max_prioritization_fees,
                 ..
             } = execute_and_commit_transactions_output;
 
@@ -333,6 +341,14 @@ impl Consumer {
             saturating_add_assign!(
                 total_transactions_attempted_execution_count,
                 new_transactions_attempted_execution_count
+            );
+            total_scheduled_min_prioritization_fees = std::cmp::min(
+                total_scheduled_min_prioritization_fees,
+                scheduled_min_prioritization_fees,
+            );
+            total_scheduled_max_prioritization_fees = std::cmp::min(
+                total_scheduled_max_prioritization_fees,
+                scheduled_max_prioritization_fees,
             );
 
             trace!(
@@ -394,6 +410,8 @@ impl Consumer {
             cost_model_us: total_cost_model_us,
             execute_and_commit_timings: total_execute_and_commit_timings,
             error_counters: total_error_counters,
+            scheduled_min_prioritization_fees: total_scheduled_min_prioritization_fees,
+            scheduled_max_prioritization_fees: total_scheduled_max_prioritization_fees,
         }
     }
 
@@ -423,7 +441,13 @@ impl Consumer {
                 // Re-sanitized transaction should be equal to the original transaction,
                 // but whether it will pass sanitization needs to be checked.
                 let resanitized_tx =
-                    bank.fully_verify_transaction(tx.to_versioned_transaction())?;
+                    match bank.fully_verify_transaction(tx.to_versioned_transaction()) {
+                        Ok(resanitized_tx) => resanitized_tx,
+                        Err(e) => {
+                            bank.notify_transaction_error(tx, Some(e.clone()));
+                            return Err(e);
+                        }
+                    };
                 if resanitized_tx != *tx {
                     // Sanitization before/after epoch give different transaction data - do not execute.
                     return Err(TransactionError::ResanitizationNeeded);
@@ -561,6 +585,33 @@ impl Consumer {
         });
         execute_and_commit_timings.collect_balances_us = collect_balances_us;
 
+        let min_max = batch
+            .sanitized_transactions()
+            .iter()
+            .filter_map(|transaction| {
+                let message = transaction.message();
+                for (program_id, instruction) in message.program_instructions_iter() {
+                    if compute_budget::check_id(program_id) {
+                        match try_from_slice_unchecked(&instruction.data) {
+                            Ok(ComputeBudgetInstruction::SetComputeUnitPrice(micro_lamports)) => {
+                                return Some(micro_lamports);
+                            },
+                            Ok(ComputeBudgetInstruction::RequestUnitsDeprecated {
+                                additional_fee,
+                                ..
+                            }) => {
+                                return Some(additional_fee as u64);
+                            }
+                            _ => {
+                            }
+                        }
+                    }
+                }
+                None
+            }).minmax();
+        let (scheduled_min_prioritization_fees, scheduled_max_prioritization_fees) =
+            min_max.into_option().unwrap_or_default();
+
         let (load_and_execute_transactions_output, load_execute_us) = measure_us!(bank
             .load_and_execute_transactions(
                 batch,
@@ -635,6 +686,8 @@ impl Consumer {
                 commit_transactions_result: Err(recorder_err),
                 execute_and_commit_timings,
                 error_counters,
+                scheduled_min_prioritization_fees: scheduled_min_prioritization_fees as usize,
+                scheduled_max_prioritization_fees: scheduled_max_prioritization_fees as usize,
             };
         }
 
@@ -690,6 +743,8 @@ impl Consumer {
             commit_transactions_result: Ok(commit_transaction_statuses),
             execute_and_commit_timings,
             error_counters,
+            scheduled_min_prioritization_fees: scheduled_min_prioritization_fees as usize,
+            scheduled_max_prioritization_fees: scheduled_max_prioritization_fees as usize,
         }
     }
 

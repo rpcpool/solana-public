@@ -383,8 +383,8 @@ impl BundleStage {
         let (decision, make_decision_time) =
             measure!(decision_maker.make_consume_or_forward_decision());
 
-        let (metrics_action, banking_stage_metrics_action) =
-            bundle_stage_leader_metrics.check_leader_slot_boundary(decision.bank_start());
+        let (metrics_action, banking_stage_metrics_action) = bundle_stage_leader_metrics
+            .check_leader_slot_boundary(decision.bank_start(), Some(unprocessed_bundle_storage));
         bundle_stage_leader_metrics
             .leader_slot_metrics_tracker()
             .increment_make_decision_us(make_decision_time.as_us());

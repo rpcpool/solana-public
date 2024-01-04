@@ -1,7 +1,6 @@
 //! The `banking_stage` processes Transaction messages. It is intended to be used
 //! to construct a software pipeline. The stage uses all available CPU cores and
 //! can do its processing in parallel with signature verification on the GPU.
-
 use {
     self::{
         consumer::Consumer,
@@ -473,7 +472,10 @@ impl BankingStage {
         }
         let (decision, make_decision_time) =
             measure!(decision_maker.make_consume_or_forward_decision());
-        let metrics_action = slot_metrics_tracker.check_leader_slot_boundary(decision.bank_start());
+        let metrics_action = slot_metrics_tracker.check_leader_slot_boundary(
+            decision.bank_start(),
+            Some(unprocessed_transaction_storage),
+        );
         slot_metrics_tracker.increment_make_decision_us(make_decision_time.as_us());
 
         match decision {

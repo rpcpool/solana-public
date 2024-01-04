@@ -157,8 +157,9 @@ use {
         sysvar::{self, Sysvar, SysvarId},
         timing::years_as_slots,
         transaction::{
-            self, MessageHash, Result, SanitizedTransaction, Transaction, TransactionError,
-            TransactionVerificationMode, VersionedTransaction, MAX_TX_ACCOUNT_LOCKS,
+            self, BankingTransactionResultNotifier, MessageHash, Result, SanitizedTransaction,
+            Transaction, TransactionError, TransactionVerificationMode, VersionedTransaction,
+            MAX_TX_ACCOUNT_LOCKS,
         },
         transaction_context::{
             ExecutionRecord, TransactionAccount, TransactionContext, TransactionReturnData,
@@ -819,6 +820,7 @@ impl PartialEq for Bank {
             loaded_programs_cache: _,
             check_program_modification_slot: _,
             epoch_reward_status: _,
+            banking_transaction_result_notifier: _,
             // Ignore new fields explicitly if they do not impact PartialEq.
             // Adding ".." will remove compile-time checks that if a new field
             // is added to the struct, this PartialEq is accordingly updated.
@@ -1091,6 +1093,9 @@ pub struct Bank {
     bank_freeze_or_destruction_incremented: AtomicBool,
 
     epoch_reward_status: EpochRewardStatus,
+
+    /// geyser plugin to notify transaction results
+    banking_transaction_result_notifier: Option<BankingTransactionResultNotifier>,
 }
 
 struct VoteWithStakeDelegations {
@@ -1312,6 +1317,7 @@ impl Bank {
             loaded_programs_cache: Arc::<RwLock<LoadedPrograms>>::default(),
             check_program_modification_slot: false,
             epoch_reward_status: EpochRewardStatus::default(),
+            banking_transaction_result_notifier: None,
         };
 
         bank.bank_created();
@@ -1625,6 +1631,7 @@ impl Bank {
             loaded_programs_cache: parent.loaded_programs_cache.clone(),
             check_program_modification_slot: false,
             epoch_reward_status: parent.epoch_reward_status.clone(),
+            banking_transaction_result_notifier: None,
         };
 
         let (_, ancestors_time_us) = measure_us!({
@@ -1967,6 +1974,7 @@ impl Bank {
             loaded_programs_cache: Arc::<RwLock<LoadedPrograms>>::default(),
             check_program_modification_slot: false,
             epoch_reward_status: EpochRewardStatus::default(),
+            banking_transaction_result_notifier: None,
         };
         bank.bank_created();
 
@@ -3500,6 +3508,9 @@ impl Bank {
         let mut status_cache = self.status_cache.write().unwrap();
         assert_eq!(sanitized_txs.len(), execution_results.len());
         for (tx, execution_result) in sanitized_txs.iter().zip(execution_results) {
+            if let TransactionExecutionResult::NotExecuted(err) = execution_result {
+                self.notify_transaction_error(tx, Some(err.clone()));
+            }
             if let Some(details) = execution_result.details() {
                 // Add the message hash to the status cache to ensure that this message
                 // won't be processed again with a different signature.
@@ -3884,6 +3895,7 @@ impl Bank {
             (Ok(()), Some(NoncePartial::new(address, account)))
         } else {
             error_counters.blockhash_not_found += 1;
+            self.notify_transaction_error(tx, Some(TransactionError::BlockhashNotFound));
             (Err(TransactionError::BlockhashNotFound), None)
         }
     }
@@ -3915,6 +3927,10 @@ impl Bank {
                     && self.is_transaction_already_processed(sanitized_tx, &rcache)
                 {
                     error_counters.already_processed += 1;
+                    self.notify_transaction_error(
+                        sanitized_tx,
+                        Some(TransactionError::AlreadyProcessed),
+                    );
                     return (Err(TransactionError::AlreadyProcessed), None);
                 }
 
@@ -4289,6 +4305,7 @@ impl Bank {
                         error_counters.instruction_error += 1;
                     }
                 }
+                self.notify_transaction_error(tx, Some(err.clone()));
                 err
             });
 
@@ -4325,6 +4342,7 @@ impl Bank {
             {
                 status = Err(TransactionError::UnbalancedTransaction);
             } else {
+                self.notify_transaction_error(tx, Some(TransactionError::UnbalancedTransaction));
                 return TransactionExecutionResult::NotExecuted(
                     TransactionError::InstructionError(0, InstructionError::UnbalancedInstruction),
                 );
@@ -4443,6 +4461,23 @@ impl Bank {
         loaded_programs_for_txs
     }
 
+    pub fn notify_transaction_error(
+        &self,
+        transaction: &SanitizedTransaction,
+        result: Option<TransactionError>,
+    ) {
+        if let Some(transaction_result_notifier_lock) = &self.banking_transaction_result_notifier {
+            let transaction_error_notifier = transaction_result_notifier_lock.lock.read();
+            if let Ok(transaction_error_notifier) = transaction_error_notifier {
+                transaction_error_notifier.notify_banking_transaction_result(
+                    transaction,
+                    result,
+                    self.slot,
+                );
+            }
+        }
+    }
+
     #[allow(clippy::type_complexity)]
     pub fn load_and_execute_transactions(
         &self,
@@ -4494,6 +4529,23 @@ impl Bank {
                 Ok(_) => None,
             })
             .collect();
+
+        if let Some(transaction_result_notifier_lock) = &self.banking_transaction_result_notifier {
+            let transaction_error_notifier = transaction_result_notifier_lock.lock.read();
+            if let Ok(transaction_error_notifier) = transaction_error_notifier {
+                batch
+                    .sanitized_transactions()
+                    .iter()
+                    .zip(batch.lock_results())
+                    .for_each(|(transaction, result)| {
+                        transaction_error_notifier.notify_banking_transaction_result(
+                            transaction,
+                            result.clone().err(),
+                            self.slot,
+                        );
+                    });
+            }
+        }
 
         let mut check_time = Measure::start("check_transactions");
         let mut check_results = self.check_transactions(
@@ -7812,6 +7864,17 @@ impl Bank {
                 .saturating_sub(forward_transactions_to_leader_at_slot_offset as usize),
             &mut error_counters,
         )
+    }
+
+    pub fn set_banking_transaction_results_notifier(
+        &mut self,
+        banking_transaction_result_notifier: Option<BankingTransactionResultNotifier>,
+    ) {
+        self.banking_transaction_result_notifier = banking_transaction_result_notifier;
+    }
+
+    pub fn has_banking_transaction_results_notifier(&self) -> bool {
+        self.banking_transaction_result_notifier.is_some()
     }
 }
 

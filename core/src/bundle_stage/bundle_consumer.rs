@@ -572,6 +572,8 @@ impl BundleConsumer {
                 cost_model_us: cost_model_elapsed_us,
                 execute_and_commit_timings: result.execute_and_commit_timings,
                 error_counters: result.transaction_error_counter,
+                scheduled_max_prioritization_fees,
+                scheduled_min_prioritization_fees,
             });
 
         match result.result {
