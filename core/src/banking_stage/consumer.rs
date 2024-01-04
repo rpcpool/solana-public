@@ -1,3 +1,5 @@
+use solana_sdk::{compute_budget::{self, ComputeBudgetInstruction}, borsh0_10::try_from_slice_unchecked};
+
 use {
     super::{
         committer::{CommitTransactionDetails, Committer},
@@ -18,9 +20,7 @@ use {
         BankStart, PohRecorderError, RecordTransactionsSummary, RecordTransactionsTimings,
         TransactionRecorder,
     },
-    solana_program_runtime::{
-        compute_budget_processor::process_compute_budget_instructions, timings::ExecuteTimings,
-    },
+    solana_program_runtime::timings::ExecuteTimings,
     solana_runtime::{
         bank::{Bank, LoadAndExecuteTransactionsOutput, TransactionCheckResult},
         transaction_batch::TransactionBatch,
@@ -573,10 +573,25 @@ impl Consumer {
             .iter()
             .filter_map(|transaction| {
                 let message = transaction.message();
-                process_compute_budget_instructions(message.program_instructions_iter()).ok()
-            })
-            .map(|cu_limits| cu_limits.compute_unit_price)
-            .minmax();
+                for (program_id, instruction) in message.program_instructions_iter() {
+                    if compute_budget::check_id(program_id) {
+                        match try_from_slice_unchecked(&instruction.data) {
+                            Ok(ComputeBudgetInstruction::SetComputeUnitPrice(micro_lamports)) => {
+                                return Some(micro_lamports);
+                            },
+                            Ok(ComputeBudgetInstruction::RequestUnitsDeprecated {
+                                additional_fee,
+                                ..
+                            }) => {
+                                return Some(additional_fee as u64);
+                            }
+                            _ => {
+                            }
+                        }
+                    }
+                }
+                None
+            }).minmax();
         let (scheduled_min_prioritization_fees, scheduled_max_prioritization_fees) =
             min_max.into_option().unwrap_or_default();
 

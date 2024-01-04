@@ -1,7 +1,9 @@
 use {
     crate::{
         leader_slot_banking_stage_timing_metrics::*,
-        unprocessed_transaction_storage::{InsertPacketBatchSummary, UnprocessedTransactionStorage},
+        unprocessed_transaction_storage::{
+            InsertPacketBatchSummary, UnprocessedTransactionStorage,
+        },
     },
     solana_poh::poh_recorder::BankStart,
     solana_runtime::transaction_error_metrics::*,
