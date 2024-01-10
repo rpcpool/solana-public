@@ -665,6 +665,13 @@ impl Validator {
             .as_ref()
             .and_then(|geyser_plugin_service| geyser_plugin_service.get_block_metadata_notifier());
 
+        let banking_transaction_results_notifier =
+            geyser_plugin_service
+                .as_ref()
+                .and_then(|geyser_plugin_service| {
+                    geyser_plugin_service.get_banking_transaction_result_notifier()
+                });
+
         info!(
             "Geyser plugin: accounts_update_notifier: {}, \
             transaction_notifier: {}, \
@@ -1311,6 +1318,7 @@ impl Validator {
             turbine_quic_endpoint_receiver,
             repair_quic_endpoint_sender,
             config.shred_receiver_address.clone(),
+            banking_transaction_results_notifier,
         )?;
 
         let tpu = Tpu::new(
