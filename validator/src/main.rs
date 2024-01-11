@@ -47,6 +47,7 @@ use {
     solana_rpc_client::rpc_client::RpcClient,
     solana_rpc_client_api::config::RpcLeaderScheduleConfig,
     solana_runtime::{
+        program_inclusions::load_datum_program_inclusions,
         runtime_config::RuntimeConfig,
         snapshot_bank_utils::DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
         snapshot_config::{SnapshotConfig, SnapshotUsage},
@@ -1223,6 +1224,10 @@ pub fn main() {
     };
     let starting_with_geyser_plugins: bool = on_start_geyser_plugin_config_files.is_some();
 
+    let program_datum_inclusions = Arc::new(load_datum_program_inclusions(
+        &on_start_geyser_plugin_config_files,
+    ));
+
     let rpc_bigtable_config = if matches.is_present("enable_rpc_bigtable_ledger_storage")
         || matches.is_present("enable_bigtable_ledger_upload")
     {
@@ -1398,6 +1403,7 @@ pub fn main() {
         accounts_shrink_ratio,
         runtime_config: RuntimeConfig {
             log_messages_bytes_limit: value_of(&matches, "log_messages_bytes_limit"),
+            program_datum_inclusions,
             ..RuntimeConfig::default()
         },
         staked_nodes_overrides: staked_nodes_overrides.clone(),

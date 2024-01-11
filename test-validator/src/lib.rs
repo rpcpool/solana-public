@@ -34,7 +34,8 @@ use {
     solana_rpc_client::{nonblocking, rpc_client::RpcClient},
     solana_runtime::{
         bank_forks::BankForks, genesis_utils::create_genesis_config_with_leader_ex,
-        runtime_config::RuntimeConfig, snapshot_config::SnapshotConfig,
+        program_inclusions::load_datum_program_inclusions, runtime_config::RuntimeConfig,
+        snapshot_config::SnapshotConfig,
     },
     solana_sdk::{
         account::{Account, AccountSharedData},
@@ -915,6 +916,10 @@ impl TestValidator {
             ..AccountsDbConfig::default()
         });
 
+        let program_datum_inclusions = Arc::new(load_datum_program_inclusions(
+            &config.geyser_plugin_config_files,
+        ));
+
         let runtime_config = RuntimeConfig {
             compute_budget: config
                 .compute_unit_limit
@@ -924,6 +929,7 @@ impl TestValidator {
                 }),
             log_messages_bytes_limit: config.log_messages_bytes_limit,
             transaction_account_lock_limit: config.transaction_account_lock_limit,
+            program_datum_inclusions,
         };
 
         let mut validator_config = ValidatorConfig {
