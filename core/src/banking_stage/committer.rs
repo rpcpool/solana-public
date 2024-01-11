@@ -10,9 +10,10 @@ use {
     },
     solana_measure::measure_us,
     solana_runtime::{
-        bank::{Bank, CommitTransactionCounts, TransactionBalancesSet},
+        bank::{Bank, CommitTransactionCounts, TransactionBalancesSet, TransactionDatumSet},
         bank_utils,
         prioritization_fee_cache::PrioritizationFeeCache,
+        program_inclusions::PreOrPostDatum,
         transaction_batch::TransactionBatch,
     },
     solana_sdk::{hash::Hash, pubkey::Pubkey, saturating_add_assign},
@@ -32,6 +33,7 @@ pub enum CommitTransactionDetails {
 #[derive(Default)]
 pub(super) struct PreBalanceInfo {
     pub native: Vec<Vec<u64>>,
+    pub datum: Vec<Vec<Option<Vec<u8>>>>,
     pub token: Vec<Vec<TransactionTokenBalance>>,
     pub mint_decimals: HashMap<Pubkey, u8>,
 }
@@ -141,7 +143,8 @@ impl Committer {
     ) {
         if let Some(transaction_status_sender) = &self.transaction_status_sender {
             let txs = batch.sanitized_transactions().to_vec();
-            let post_balances = bank.collect_balances(batch);
+            let (post_balances, post_datum) =
+                bank.collect_balances_and_datum(batch, PreOrPostDatum::PostDatum);
             let post_token_balances =
                 collect_token_balances(bank, batch, &mut pre_balance_info.mint_decimals);
             let mut transaction_index = starting_transaction_index.unwrap_or_default();
@@ -166,6 +169,7 @@ impl Committer {
                     std::mem::take(&mut pre_balance_info.native),
                     post_balances,
                 ),
+                TransactionDatumSet::new(std::mem::take(&mut pre_balance_info.datum), post_datum),
                 TransactionTokenBalancesSet::new(
                     std::mem::take(&mut pre_balance_info.token),
                     post_token_balances,

@@ -1,0 +1,25 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@8.1.3
+  
+executors:
+  custom:
+    machine:
+      image: ubuntu-2204:2022.04.2
+    resource_class: xlarge
+
+workflows:
+  run-pipeline:
+    jobs:
+      - aws-ecr/build-and-push-image:
+          executor: custom
+          dockerfile: _step-finance/Dockerfile
+          repo: step-solana
+          region: eu-north-1
+          tag: ${CIRCLE_BRANCH},${CIRCLE_BRANCH}-<< pipeline.number >>,${CIRCLE_BRANCH}-<< pipeline.number >>-${CIRCLE_SHA1}
+          context: aws-account
+          filters:
+            branches:
+              only:
+                - step-release
