@@ -9,5 +9,6 @@ pub fn filter_allows(filter: &RpcFilterType, account: &AccountSharedData) -> boo
         RpcFilterType::DataSize(size) => account.data().len() as u64 == *size,
         RpcFilterType::Memcmp(compare) => compare.bytes_match(account.data()),
         RpcFilterType::TokenAccountState => Account::valid_account_data(account.data()),
+        RpcFilterType::ValueCmp(compare) => compare.values_match(account.data()).unwrap_or(false),
     }
 }
