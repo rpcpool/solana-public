@@ -2627,6 +2627,7 @@ fn get_spl_token_owner_filter(program_id: &Pubkey, filters: &[RpcFilterType]) ->
                 }
             }
             RpcFilterType::TokenAccountState => token_account_state_filter = true,
+            RpcFilterType::ValueCmp(_) => {}
         }
     }
     if data_size_filter == Some(account_packed_len as u64)
@@ -2678,6 +2679,7 @@ fn get_spl_token_mint_filter(program_id: &Pubkey, filters: &[RpcFilterType]) -> 
                 }
             }
             RpcFilterType::TokenAccountState => token_account_state_filter = true,
+            RpcFilterType::ValueCmp(_) => {}
         }
     }
     if data_size_filter == Some(account_packed_len as u64)
