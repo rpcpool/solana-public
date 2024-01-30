@@ -1,6 +1,9 @@
 use {
     crate::{
-        banking_stage::{leader_slot_metrics, leader_slot_metrics::LeaderSlotMetricsTracker},
+        banking_stage::{
+            leader_slot_metrics, leader_slot_metrics::LeaderSlotMetricsTracker,
+            unprocessed_transaction_storage::UnprocessedTransactionStorage,
+        },
         immutable_deserialized_bundle::DeserializedBundleError,
     },
     solana_bundle::{bundle_execution::LoadAndExecuteBundleError, BundleExecutionError},
@@ -31,13 +34,14 @@ impl BundleStageLeaderMetrics {
     pub(crate) fn check_leader_slot_boundary(
         &mut self,
         bank_start: Option<&BankStart>,
+        unprocessed_transaction_storage: Option<&UnprocessedTransactionStorage>,
     ) -> (
         leader_slot_metrics::MetricsTrackerAction,
         MetricsTrackerAction,
     ) {
         let banking_stage_metrics_action = self
             .leader_slot_metrics_tracker
-            .check_leader_slot_boundary(bank_start);
+            .check_leader_slot_boundary(bank_start, unprocessed_transaction_storage);
         let bundle_stage_metrics_action = self
             .bundle_stage_metrics_tracker
             .check_leader_slot_boundary(bank_start);
