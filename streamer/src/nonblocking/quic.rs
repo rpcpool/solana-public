@@ -162,6 +162,7 @@ async fn run_server(
     ));
     let staked_connection_table: Arc<Mutex<ConnectionTable>> =
         Arc::new(Mutex::new(ConnectionTable::new(ConnectionPeerType::Staked)));
+
     let (sender, receiver) = async_unbounded();
     tokio::spawn(packet_batch_sender(
         packet_sender,
@@ -1002,6 +1003,15 @@ pub enum ConnectionPeerType {
     Staked,
 }
 
+impl ConnectionPeerType {
+    pub fn to_string(&self) -> String {
+        match self {
+            ConnectionPeerType::Unstaked => "unstaked".to_string(),
+            ConnectionPeerType::Staked => "staked".to_string(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
 enum ConnectionTableKey {
     IP(IpAddr),
@@ -1013,6 +1023,13 @@ impl ConnectionTableKey {
         maybe_pubkey.map_or(ConnectionTableKey::IP(ip), |pubkey| {
             ConnectionTableKey::Pubkey(pubkey)
         })
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            ConnectionTableKey::IP(ip) => format!("ip:{}", ip),
+            ConnectionTableKey::Pubkey(pubkey) => format!("pubkey:{}", pubkey.to_string()),
+        }
     }
 }
 
@@ -1044,7 +1061,14 @@ impl ConnectionTable {
                 None => break,
                 Some((index, connections)) => {
                     num_pruned += connections.len();
-                    self.table.swap_remove_index(index);
+                    if let Some((k, v)) = self.table.swap_remove_index(index) {
+                        log::info!(
+                            "QUIC Connection dropped {}, {}, count : {} ",
+                            self.peer_type.to_string(),
+                            k.to_string(),
+                            v.len()
+                        );
+                    }
                 }
             }
         }
@@ -1071,7 +1095,19 @@ impl ConnectionTable {
             .take(sample_size)
             .min_by_key(|&(_, stake)| stake)
             .filter(|&(_, stake)| stake < Some(threshold_stake))
-            .and_then(|(index, _)| self.table.swap_remove_index(index))
+            .and_then(|(index, _)| {
+                if let Some((k, v)) = self.table.swap_remove_index(index) {
+                    log::info!(
+                        "QUIC Connection dropped {}, {}, count : {} ",
+                        self.peer_type.to_string(),
+                        k.to_string(),
+                        v.len()
+                    );
+                    Some((k, v))
+                } else {
+                    None
+                }
+            })
             .map(|(_, connections)| connections.len())
             .unwrap_or_default();
         self.total_size = self.total_size.saturating_sub(num_pruned);
@@ -1094,6 +1130,12 @@ impl ConnectionTable {
             .map(|c| c <= max_connections_per_peer)
             .unwrap_or(false);
         if has_connection_capacity {
+            log::info!(
+                "QUIC Connection added {}, {}, count : {} ",
+                self.peer_type.to_string(),
+                key.to_string(),
+                connection_entry.len() + 1
+            );
             let exit = Arc::new(AtomicBool::new(false));
             let last_update = Arc::new(AtomicU64::new(last_update));
             connection_entry.push(ConnectionEntry::new(
@@ -1141,6 +1183,13 @@ impl ConnectionTable {
             }
             let connections_removed = old_size.saturating_sub(new_size);
             self.total_size = self.total_size.saturating_sub(connections_removed);
+
+            log::info!(
+                "QUIC Connection added {}, {}, count : {} ",
+                self.peer_type.to_string(),
+                key.to_string(),
+                new_size
+            );
             connections_removed
         } else {
             0
