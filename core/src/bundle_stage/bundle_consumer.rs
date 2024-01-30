@@ -16,6 +16,7 @@ use {
         proxy::block_engine_stage::BlockBuilderFeeInfo,
         tip_manager::TipManager,
     },
+    itertools::Itertools,
     solana_accounts_db::transaction_error_metrics::TransactionErrorMetrics,
     solana_bundle::{
         bundle_execution::{load_and_execute_bundle, BundleExecutionMetrics},
@@ -27,8 +28,10 @@ use {
     solana_poh::poh_recorder::{BankStart, RecordTransactionsSummary, TransactionRecorder},
     solana_runtime::bank::Bank,
     solana_sdk::{
+        borsh0_10::try_from_slice_unchecked,
         bundle::SanitizedBundle,
         clock::{Slot, MAX_PROCESSING_AGE},
+        compute_budget::{self, ComputeBudgetInstruction},
         feature_set,
         pubkey::Pubkey,
         transaction::{self},
@@ -508,6 +511,33 @@ impl BundleConsumer {
             sanitized_bundle.transactions.len()
         );
 
+        let minmax = sanitized_bundle
+            .transactions
+            .iter()
+            .filter_map(|transaction| {
+                let message = transaction.message();
+                for (program_id, instruction) in message.program_instructions_iter() {
+                    if compute_budget::check_id(program_id) {
+                        match try_from_slice_unchecked(&instruction.data) {
+                            Ok(ComputeBudgetInstruction::SetComputeUnitPrice(micro_lamports)) => {
+                                return Some(micro_lamports as usize);
+                            }
+                            Ok(ComputeBudgetInstruction::RequestUnitsDeprecated {
+                                additional_fee,
+                                ..
+                            }) => {
+                                return Some(additional_fee as usize);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                None
+            })
+            .minmax();
+        let (scheduled_max_prioritization_fees, scheduled_min_prioritization_fees) =
+            minmax.into_option().unwrap_or_default();
+
         let (
             (transaction_qos_cost_results, _cost_model_throttled_transactions_count),
             cost_model_elapsed_us,
@@ -572,6 +602,8 @@ impl BundleConsumer {
                 cost_model_us: cost_model_elapsed_us,
                 execute_and_commit_timings: result.execute_and_commit_timings,
                 error_counters: result.transaction_error_counter,
+                scheduled_min_prioritization_fees,
+                scheduled_max_prioritization_fees,
             });
 
         match result.result {
