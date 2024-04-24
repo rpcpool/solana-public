@@ -25,6 +25,17 @@ pub struct RpcSendTransactionConfig {
     pub min_context_slot: Option<Slot>,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RcpSanitizeTransactionConfig {
+    #[serde(default)]
+    pub sig_verify: bool,
+    #[serde(flatten)]
+    pub commitment: Option<CommitmentConfig>,
+    pub encoding: Option<UiTransactionEncoding>,
+    pub min_context_slot: Option<Slot>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcSimulateTransactionAccountsConfig {

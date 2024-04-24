@@ -1243,6 +1243,31 @@ impl RpcClient {
         }
     }
 
+    pub async fn sanitize_transaction(
+        &self,
+        transaction: &impl SerializableTransaction,
+        config: RcpSanitizeTransactionConfig,
+    ) -> RpcResult<()> {
+        let encoding = if let Some(encoding) = config.encoding {
+            encoding
+        } else {
+            self.default_cluster_transaction_encoding().await?
+        };
+        let commitment = config.commitment.unwrap_or_default();
+        let commitment = self.maybe_map_commitment(commitment).await?;
+        let config = RcpSanitizeTransactionConfig {
+            encoding: Some(encoding),
+            commitment: Some(commitment),
+            ..config
+        };
+        let serialized_encoded = serialize_and_encode(transaction, encoding)?;
+        self.send(
+            RpcRequest::SanitizeTransaction,
+            json!([serialized_encoded, config]),
+        )
+        .await
+    }
+
     /// Simulates sending a transaction.
     ///
     /// If the transaction fails, then the [`err`] field of the returned
