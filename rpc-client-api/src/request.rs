@@ -66,6 +66,7 @@ pub enum RpcRequest {
     RegisterNode,
     RequestAirdrop,
     SendTransaction,
+    SanitizeTransaction,
     SimulateTransaction,
     SignVote,
 }
@@ -131,6 +132,7 @@ impl fmt::Display for RpcRequest {
             RpcRequest::RegisterNode => "registerNode",
             RpcRequest::RequestAirdrop => "requestAirdrop",
             RpcRequest::SendTransaction => "sendTransaction",
+            RpcRequest::SanitizeTransaction => "sanitizeTransaction",
             RpcRequest::SimulateTransaction => "simulateTransaction",
             RpcRequest::SignVote => "signVote",
         };
