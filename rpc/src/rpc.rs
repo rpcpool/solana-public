@@ -3314,6 +3314,14 @@ pub mod rpc_full {
             config: Option<RpcSendTransactionConfig>,
         ) -> Result<String>;
 
+        #[rpc(meta, name = "sanitizeTransaction")]
+        fn sanitize_transaction(
+            &self,
+            meta: Self::Metadata,
+            data: String,
+            config: Option<RcpSanitizeTransactionConfig>,
+        ) -> Result<()>;
+
         #[rpc(meta, name = "simulateTransaction")]
         fn simulate_transaction(
             &self,
@@ -3727,6 +3735,39 @@ pub mod rpc_full {
                 durable_nonce_info,
                 max_retries,
             )
+        }
+
+        fn sanitize_transaction(
+            &self,
+            meta: Self::Metadata,
+            data: String,
+            config: Option<RcpSanitizeTransactionConfig>,
+        ) -> Result<()> {
+            let RcpSanitizeTransactionConfig {
+                sig_verify,
+                commitment,
+                encoding,
+                min_context_slot,
+            } = config.unwrap_or_default();
+            let tx_encoding = encoding.unwrap_or(UiTransactionEncoding::Base58);
+            let binary_encoding = tx_encoding.into_binary_encoding().ok_or_else(|| {
+                Error::invalid_params(format!(
+                    "unsupported encoding: {tx_encoding}. Supported encodings: base58, base64"
+                ))
+            })?;
+            let (_wire_transaction, unsanitized_tx) =
+                decode_and_deserialize::<VersionedTransaction>(data, binary_encoding)?;
+
+            let bank = &*meta.get_bank_with_config(RpcContextConfig {
+                commitment,
+                min_context_slot,
+            })?;
+            let transaction = sanitize_transaction(unsanitized_tx, bank)?;
+            if sig_verify {
+                verify_transaction(&transaction, &bank.feature_set)?;
+            }
+
+            Ok(())
         }
 
         fn simulate_transaction(
