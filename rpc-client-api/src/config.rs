@@ -19,6 +19,8 @@ pub struct RpcSignatureStatusConfig {
 pub struct RpcSendTransactionConfig {
     #[serde(default)]
     pub skip_preflight: bool,
+    #[serde(default)]
+    pub skip_sanitize: bool,
     pub preflight_commitment: Option<CommitmentLevel>,
     pub encoding: Option<UiTransactionEncoding>,
     pub max_retries: Option<usize>,
