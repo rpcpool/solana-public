@@ -3621,6 +3621,7 @@ pub mod rpc_full {
             debug!("send_transaction rpc request received");
             let RpcSendTransactionConfig {
                 skip_preflight,
+                skip_sanitize,
                 preflight_commitment,
                 encoding,
                 max_retries,
@@ -3642,27 +3643,36 @@ pub mod rpc_full {
                 min_context_slot,
             })?;
 
-            let transaction = sanitize_transaction(unsanitized_tx, preflight_bank)?;
-            let signature = *transaction.signature();
+            let recent_blockhash = *unsanitized_tx.message.recent_blockhash();
+            let signature = unsanitized_tx.signatures[0];
+            let sanitized_tx = if skip_preflight && skip_sanitize {
+                None
+            } else {
+                Some(sanitize_transaction(unsanitized_tx, preflight_bank)?)
+            };
 
             let mut last_valid_block_height = preflight_bank
-                .get_blockhash_last_valid_block_height(transaction.message().recent_blockhash())
+                .get_blockhash_last_valid_block_height(&recent_blockhash)
                 .unwrap_or(0);
 
-            let durable_nonce_info = transaction
-                .get_durable_nonce()
-                .map(|&pubkey| (pubkey, *transaction.message().recent_blockhash()));
-            if durable_nonce_info.is_some() {
-                // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
-                // It provides a fallback timeout for durable-nonce transaction retries in case of
-                // malicious packing of the retry queue. Durable-nonce transactions are otherwise
-                // retried until the nonce is advanced.
-                last_valid_block_height =
-                    preflight_bank.block_height() + MAX_RECENT_BLOCKHASHES as u64;
+            let mut durable_nonce_info = None;
+            if let Some(sanitized_tx) = &sanitized_tx {
+                durable_nonce_info = sanitized_tx
+                    .get_durable_nonce()
+                    .map(|&pubkey| (pubkey, *sanitized_tx.message().recent_blockhash()));
+                if durable_nonce_info.is_some() {
+                    // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
+                    // It provides a fallback timeout for durable-nonce transaction retries in case of
+                    // malicious packing of the retry queue. Durable-nonce transactions are otherwise
+                    // retried until the nonce is advanced.
+                    last_valid_block_height =
+                        preflight_bank.block_height() + MAX_RECENT_BLOCKHASHES as u64;
+                }
             }
 
             if !skip_preflight {
-                verify_transaction(&transaction, &preflight_bank.feature_set)?;
+                let sanitized_tx = sanitized_tx.expect("sanitized transaction should exists");
+                verify_transaction(&sanitized_tx, &preflight_bank.feature_set)?;
 
                 match meta.health.check() {
                     RpcHealthStatus::Ok => (),
@@ -3688,7 +3698,7 @@ pub mod rpc_full {
                     post_simulation_accounts: _,
                     units_consumed,
                     return_data,
-                } = preflight_bank.simulate_transaction(transaction)
+                } = preflight_bank.simulate_transaction(sanitized_tx)
                 {
                     match err {
                         TransactionError::BlockhashNotFound => {
