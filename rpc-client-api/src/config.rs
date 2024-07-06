@@ -348,3 +348,12 @@ pub struct RpcContextConfig {
 pub struct RpcRecentPrioritizationFeesConfig {
     pub percentile: Option<u16>,
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcLatestBlockhashConfig {
+    #[serde(flatten)]
+    pub context: RpcContextConfig,
+    #[serde(default)]
+    pub rollback: usize,
+}
