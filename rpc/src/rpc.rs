@@ -2184,8 +2184,20 @@ impl JsonRpcRequestProcessor {
         }
     }
 
-    fn get_latest_blockhash(&self, config: RpcContextConfig) -> Result<RpcResponse<RpcBlockhash>> {
-        let bank = self.get_bank_with_config(config)?;
+    fn get_latest_blockhash(
+        &self,
+        config: RpcLatestBlockhashConfig,
+    ) -> Result<RpcResponse<RpcBlockhash>> {
+        let mut bank = self.get_bank_with_config(config.context)?;
+        if config.rollback > 300 {
+            return Err(Error::invalid_params("rollback exceeds 300"));
+        }
+        for _ in 0..config.rollback {
+            bank = match bank.parent() {
+                Some(bank) => bank,
+                None => return Err(Error::invalid_params("failed to rollback block")),
+            };
+        }
         let blockhash = bank.last_blockhash();
         let last_valid_block_height = bank
             .get_blockhash_last_valid_block_height(&blockhash)
@@ -3422,7 +3434,7 @@ pub mod rpc_full {
         fn get_latest_blockhash(
             &self,
             meta: Self::Metadata,
-            config: Option<RpcContextConfig>,
+            config: Option<RpcLatestBlockhashConfig>,
         ) -> Result<RpcResponse<RpcBlockhash>>;
 
         #[rpc(meta, name = "isBlockhashValid")]
@@ -4098,7 +4110,7 @@ pub mod rpc_full {
         fn get_latest_blockhash(
             &self,
             meta: Self::Metadata,
-            config: Option<RpcContextConfig>,
+            config: Option<RpcLatestBlockhashConfig>,
         ) -> Result<RpcResponse<RpcBlockhash>> {
             debug!("get_latest_blockhash rpc request received");
             meta.get_latest_blockhash(config.unwrap_or_default())
