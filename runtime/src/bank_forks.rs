@@ -14,12 +14,12 @@ use {
     solana_measure::measure::Measure,
     solana_program_runtime::loaded_programs::{BlockRelation, ForkGraph},
     solana_sdk::{
-        clock::{Epoch, Slot},
+        clock::{Epoch, Slot, MAX_RECENT_BLOCKHASHES},
         hash::Hash,
         timing,
     },
     std::{
-        collections::{hash_map::Entry, HashMap, HashSet},
+        collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
         ops::Index,
         sync::{
             atomic::{AtomicBool, AtomicU64, Ordering},
@@ -72,6 +72,7 @@ struct SetRootTimings {
 
 pub struct BankForks {
     banks: HashMap<Slot, BankWithScheduler>,
+    pub banks_frozen: BTreeMap<Slot, Arc<Bank>>,
     descendants: HashMap<Slot, HashSet<Slot>>,
     root: Arc<AtomicSlot>,
 
@@ -125,6 +126,7 @@ impl BankForks {
         let bank_forks = Arc::new(RwLock::new(Self {
             root: Arc::new(AtomicSlot::new(root_slot)),
             banks,
+            banks_frozen: Default::default(),
             descendants,
             snapshot_config: None,
             accounts_hash_interval_slots: u64::MAX,
@@ -255,6 +257,13 @@ impl BankForks {
 
     pub fn remove(&mut self, slot: Slot) -> Option<BankWithScheduler> {
         let bank = self.banks.remove(&slot)?;
+        if bank.is_frozen() {
+            self.banks_frozen
+                .insert(bank.slot(), bank.clone_without_scheduler());
+            while self.banks_frozen.len() > MAX_RECENT_BLOCKHASHES {
+                self.banks_frozen.pop_first();
+            }
+        }
         for parent in bank.proper_ancestors() {
             let Entry::Occupied(mut entry) = self.descendants.entry(parent) else {
                 panic!("this should not happen!");
