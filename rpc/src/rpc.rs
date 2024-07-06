@@ -2190,8 +2190,28 @@ impl JsonRpcRequestProcessor {
         }
     }
 
-    fn get_latest_blockhash(&self, config: RpcContextConfig) -> Result<RpcResponse<RpcBlockhash>> {
-        let bank = self.get_bank_with_config(config)?;
+    fn get_latest_blockhash(
+        &self,
+        config: RpcLatestBlockhashConfig,
+    ) -> Result<RpcResponse<RpcBlockhash>> {
+        let mut bank = self.get_bank_with_config(config.context)?;
+        if config.rollback > MAX_PROCESSING_AGE {
+            return Err(Error::invalid_params(format!("rollback exceeds ${MAX_PROCESSING_AGE}")));
+        }
+        if config.rollback > 0 {
+            let r_bank_forks = self.bank_forks.read().unwrap();
+            for _ in 0..config.rollback {
+                bank = match r_bank_forks.get(bank.parent_slot()).or_else(|| {
+                    r_bank_forks
+                        .banks_frozen
+                        .get(&bank.parent_slot())
+                        .map(Clone::clone)
+                }) {
+                    Some(bank) => bank,
+                    None => return Err(Error::invalid_params("failed to rollback block")),
+                };
+            }
+        }
         let blockhash = bank.last_blockhash();
         let last_valid_block_height = bank
             .get_blockhash_last_valid_block_height(&blockhash)
@@ -3428,7 +3448,7 @@ pub mod rpc_full {
         fn get_latest_blockhash(
             &self,
             meta: Self::Metadata,
-            config: Option<RpcContextConfig>,
+            config: Option<RpcLatestBlockhashConfig>,
         ) -> Result<RpcResponse<RpcBlockhash>>;
 
         #[rpc(meta, name = "isBlockhashValid")]
@@ -4104,7 +4124,7 @@ pub mod rpc_full {
         fn get_latest_blockhash(
             &self,
             meta: Self::Metadata,
-            config: Option<RpcContextConfig>,
+            config: Option<RpcLatestBlockhashConfig>,
         ) -> Result<RpcResponse<RpcBlockhash>> {
             debug!("get_latest_blockhash rpc request received");
             meta.get_latest_blockhash(config.unwrap_or_default())
