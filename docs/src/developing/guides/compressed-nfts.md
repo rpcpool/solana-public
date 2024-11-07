@@ -836,7 +836,7 @@ helper function.
 
 Since each of these hash values resemble and are formatted similar to
 PublicKeys, we can use the
-[`PublicKey`](https://solana-labs.github.io/solana-web3.js/classes/PublicKey.html)
+[`PublicKey`](https://solana-labs.github.io/solana-web3.js/v1.x/classes/PublicKey.html)
 class in web3.js to convert them into a accepted byte array format.
 
 #### Send the transaction
