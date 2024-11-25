@@ -31,7 +31,7 @@ solana-frozen-abi-macro = { workspace = true, optional = true, features = [
 ] }
 solana-log-collector = { workspace = true }
 solana-measure = { workspace = true }
-solana-metrics = { workspace = true }
+# solana-metrics = { workspace = true }
 solana-sdk = { workspace = true }
 solana-timings = { workspace = true }
 solana-type-overrides = { workspace = true }

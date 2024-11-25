@@ -7535,7 +7535,6 @@ dependencies = [
  "solana-log-collector",
  "solana-logger",
  "solana-measure",
- "solana-metrics",
  "solana-sdk",
  "solana-timings",
  "solana-type-overrides",

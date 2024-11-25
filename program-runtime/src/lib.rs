@@ -2,8 +2,8 @@
 #![deny(clippy::arithmetic_side_effects)]
 #![deny(clippy::indexing_slicing)]
 
-#[macro_use]
-extern crate solana_metrics;
+// #[macro_use]
+// extern crate solana_metrics;
 
 pub use solana_rbpf;
 pub mod invoke_context;
