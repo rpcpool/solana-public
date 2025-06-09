@@ -2365,7 +2365,9 @@ impl JsonRpcRequestProcessor {
     ) -> Result<RpcResponse<RpcBlockhash>> {
         let mut bank = self.get_bank_with_config(config.context)?;
         if config.rollback > MAX_PROCESSING_AGE {
-            return Err(Error::invalid_params(format!("rollback exceeds ${MAX_PROCESSING_AGE}")));
+            return Err(Error::invalid_params(format!(
+                "rollback exceeds ${MAX_PROCESSING_AGE}"
+            )));
         }
         if config.rollback > 0 {
             let r_bank_forks = self.bank_forks.read().unwrap();
@@ -3730,10 +3732,13 @@ pub mod rpc_full {
                         let (version, feature_set) = if let Some(version) =
                             cluster_info.get_node_version(contact_info.pubkey())
                         {
-                            (Some(version.to_string()), Some(version.feature_set))
+                            (Some(format!("{:?}", version)), Some(version.feature_set))
+                            // version will be displayed:
+                            // solana 2.2.15 (src:7aff93a2; feat:798020478, client:Agave)
                         } else {
                             (None, None)
                         };
+
                         Some(RpcContactInfo {
                             pubkey: contact_info.pubkey().to_string(),
                             gossip: contact_info.gossip(),
