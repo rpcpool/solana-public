@@ -1831,6 +1831,8 @@ impl JsonRpcRequestProcessor {
         address: Pubkey,
         before: Option<Signature>,
         until: Option<Signature>,
+        to_slot: Option<u64>,
+        from_slot: Option<u64>,
         mut limit: usize,
         config: RpcContextConfig,
     ) -> Result<Vec<RpcConfirmedTransactionStatusWithSignature>> {
@@ -1865,7 +1867,7 @@ impl JsonRpcRequestProcessor {
             found_before,
         } = self
             .blockstore
-            .get_confirmed_signatures_for_address2(address, highest_slot, before, until, limit)
+            .get_confirmed_signatures_for_address2(address, highest_slot, before, until, to_slot, from_slot, limit)
             .map_err(|err| Error::invalid_params(format!("{err}")))?;
 
         let map_results = |results: Vec<ConfirmedTransactionStatusWithSignature>| {
@@ -1921,6 +1923,8 @@ impl JsonRpcRequestProcessor {
                         &address,
                         bigtable_before.as_ref(),
                         until.as_ref(),
+                        to_slot,
+                        from_slot,
                         limit,
                     )
                     .await;
@@ -4258,6 +4262,8 @@ pub mod rpc_full {
             let RpcSignaturesForAddressConfig {
                 before,
                 until,
+                to_slot,
+                from_slot,
                 limit,
                 commitment,
                 min_context_slot,
@@ -4272,6 +4278,8 @@ pub mod rpc_full {
                         address,
                         before,
                         until,
+                        to_slot,
+                        from_slot,
                         limit,
                         RpcContextConfig {
                             commitment,

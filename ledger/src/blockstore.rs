@@ -3339,8 +3339,16 @@ impl Blockstore {
         highest_slot: Slot, // highest_super_majority_root or highest_confirmed_slot
         before: Option<Signature>,
         until: Option<Signature>,
+        to_slot: Option<u64>,
+        from_slot: Option<u64>,
         limit: usize,
     ) -> Result<SignatureInfosForAddress> {
+         if let (Some(to), Some(from)) = (to_slot, from_slot) {
+            if to < from {
+                return Err(BlockstoreError::InvalidSlotRange(to, from));
+            }
+        }
+
         self.rpc_api_metrics
             .num_get_confirmed_signatures_for_address2
             .fetch_add(1, Ordering::Relaxed);
@@ -3356,8 +3364,26 @@ impl Blockstore {
         // be excluded from the results.
         let mut get_before_slot_timer = Measure::start("get_before_slot_timer");
         let (slot, mut before_excluded_signatures) = match before {
-            None => (highest_slot, None),
+            // Determine the starting slot and any signatures to exclude from results.
+            // When using slot-based filtering (to_slot/from_slot), we don't need exclusion sets
+            // because we're filtering by slot boundaries rather than specific signature positions.
+            None => {
+                // If `before` is not provided, we will fallback to `to_slot` if provided, if not, highest_slot
+                // If `to_slot` is provided, it must be greater than or equal to `highest_slot`, otherwise
+                // we will return an empty SignatureInfosForAddress.
+                match to_slot {
+                    Some(to_slot) => {
+                        if to_slot > highest_slot {
+                            return Ok(SignatureInfosForAddress::default());
+                        }
+                        (to_slot, None)
+                    }
+                    None => (highest_slot, None),
+                }
+            }
             Some(before) => {
+                // Signature-based filtering requires building an exclusion set
+                // to ensure we don't include the 'before' signature or any that come after it
                 let transaction_status =
                     self.get_transaction_status(before, &confirmed_unrooted_slots)?;
                 match transaction_status {
@@ -3383,7 +3409,20 @@ impl Blockstore {
         // `until` signature
         let mut get_until_slot_timer = Measure::start("get_until_slot_timer");
         let (lowest_slot, until_excluded_signatures) = match until {
-            None => (first_available_block, HashSet::new()),
+            // If `until` is not provided, we will fallback to `from_slot` if provided, if not, first_available_block
+            // If `from_slot` is provided, it must be greater than or equal to `first_available_block`, otherwise
+            // we will return an empty SignatureInfosForAddress.
+            None => {
+                match from_slot {
+                    Some(from_slot) => {
+                        if from_slot < first_available_block {
+                            return Ok(SignatureInfosForAddress::default());
+                        }
+                        (from_slot, HashSet::new())
+                    }
+                    None => (first_available_block, HashSet::new()),
+                }
+            }
             Some(until) => {
                 let transaction_status =
                     self.get_transaction_status(until, &confirmed_unrooted_slots)?;
@@ -9629,6 +9668,8 @@ pub mod tests {
                 highest_super_majority_root,
                 None,
                 None,
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap();
@@ -9641,6 +9682,8 @@ pub mod tests {
             .get_confirmed_signatures_for_address2(
                 address1,
                 highest_super_majority_root,
+                None,
+                None,
                 None,
                 None,
                 usize::MAX,
@@ -9660,6 +9703,8 @@ pub mod tests {
                     } else {
                         Some(all0[i - 1].signature)
                     },
+                    None,
+                    None,
                     None,
                     1,
                 )
@@ -9685,6 +9730,8 @@ pub mod tests {
                     } else {
                         Some(all0[i + 1].signature)
                     },
+                    None,
+                    None,
                     10,
                 )
                 .unwrap()
@@ -9699,6 +9746,8 @@ pub mod tests {
                 highest_super_majority_root,
                 Some(all0[all0.len() - 1].signature),
                 None,
+                None,
+                None,
                 1,
             )
             .unwrap();
@@ -9711,6 +9760,8 @@ pub mod tests {
                 highest_super_majority_root,
                 None,
                 Some(all0[0].signature),
+                None,
+                None,
                 2,
             )
             .unwrap()
@@ -9729,6 +9780,8 @@ pub mod tests {
                     } else {
                         Some(all0[i - 1].signature)
                     },
+                    None,
+                    None,
                     None,
                     3,
                 )
@@ -9752,6 +9805,8 @@ pub mod tests {
                         Some(all1[i - 1].signature)
                     },
                     None,
+                    None,
+                    None,
                     2,
                 )
                 .unwrap()
@@ -9769,6 +9824,8 @@ pub mod tests {
                 highest_super_majority_root,
                 Some(all1[0].signature),
                 None,
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap();
@@ -9784,6 +9841,8 @@ pub mod tests {
                 highest_super_majority_root,
                 Some(all1[0].signature),
                 Some(all1[4].signature),
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap()
@@ -9800,6 +9859,8 @@ pub mod tests {
                 highest_confirmed_slot,
                 None,
                 None,
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap()
@@ -9811,6 +9872,8 @@ pub mod tests {
             .get_confirmed_signatures_for_address2(
                 address1,
                 highest_confirmed_slot,
+                None,
+                None,
                 None,
                 None,
                 usize::MAX,
@@ -9830,6 +9893,8 @@ pub mod tests {
                     } else {
                         Some(all0[i - 1].signature)
                     },
+                    None,
+                    None,
                     None,
                     1,
                 )
@@ -9854,6 +9919,8 @@ pub mod tests {
                     } else {
                         Some(all0[i + 1].signature)
                     },
+                    None,
+                    None,
                     10,
                 )
                 .unwrap()
@@ -9868,6 +9935,8 @@ pub mod tests {
                 highest_confirmed_slot,
                 Some(all0[all0.len() - 1].signature),
                 None,
+                None,
+                None,
                 1,
             )
             .unwrap()
@@ -9880,6 +9949,8 @@ pub mod tests {
                 highest_confirmed_slot,
                 None,
                 Some(all0[0].signature),
+                None,
+                None,
                 2,
             )
             .unwrap()
@@ -9898,6 +9969,8 @@ pub mod tests {
                     } else {
                         Some(all0[i - 1].signature)
                     },
+                    None,
+                    None,
                     None,
                     3,
                 )
@@ -9925,6 +9998,8 @@ pub mod tests {
                         Some(all1[i - 1].signature)
                     },
                     None,
+                    None,
+                    None,
                     2,
                 )
                 .unwrap()
@@ -9942,6 +10017,8 @@ pub mod tests {
                 highest_confirmed_slot,
                 Some(all1[0].signature),
                 None,
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap()
@@ -9956,6 +10033,8 @@ pub mod tests {
                 highest_confirmed_slot,
                 Some(all1[0].signature),
                 Some(all1[4].signature),
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap()
@@ -9973,11 +10052,138 @@ pub mod tests {
                 highest_super_majority_root,
                 Some(all0[0].signature),
                 None,
+                None,
+                None,
                 usize::MAX,
             )
             .unwrap();
         assert!(!sig_infos.found_before);
         assert!(sig_infos.infos.is_empty());
+    
+    // Test slot-based filtering
+        // Basic slot range (4-6)
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                Some(6),
+                Some(4),
+                usize::MAX,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 6); // 2 sigs per slot * 3 slots (6, 5, 4)
+        assert!(results.iter().all(|info| info.slot >= 4 && info.slot <= 6));
+
+        // Single slot query
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                Some(5),
+                Some(5),
+                usize::MAX,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|info| info.slot == 5));
+
+        // Inverted range should error
+        let result = blockstore.get_confirmed_signatures_for_address2(
+            address0,
+            highest_super_majority_root,
+            None,
+            None,
+            Some(3),
+            Some(6),
+            usize::MAX,
+        );
+        assert!(matches!(result, Err(BlockstoreError::InvalidSlotRange(3, 6))));
+
+        // to_slot > highest_slot returns empty
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                Some(15),
+                Some(5),
+                usize::MAX,
+            )
+            .unwrap()
+            .infos;
+        assert!(results.is_empty());
+
+        // Only to_slot provided (will fall back on the lowest_slot)
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                Some(4),
+                None,
+                usize::MAX,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 4); // slots 2,4 only (slot 3 not rooted)
+        assert!(results.iter().all(|info| info.slot <= 4 && info.slot >= 2));
+
+        // Only from_slot provided
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                None,
+                Some(7),
+                usize::MAX,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 4); // slots 7,8 * 2 sigs
+        assert!(results.iter().all(|info| info.slot >= 7 && info.slot <= 8));
+
+        // before takes precedence over to_slot
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                Some(all0[6].signature), // <- before - from slot 5
+                None,
+                Some(7), // (ignored)
+                None,
+                3,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|r| all0.iter().any(|a| a.signature == r.signature)));
+
+        // Slot range with limit
+        let results = blockstore
+            .get_confirmed_signatures_for_address2(
+                address0,
+                highest_super_majority_root,
+                None,
+                None,
+                Some(7),
+                Some(2),
+                5,
+            )
+            .unwrap()
+            .infos;
+        assert_eq!(results.len(), 5);
+        // Should start from slot 7 and work backwards
+        assert!(results[0].slot >= results[4].slot);
     }
 
     #[test]

@@ -2700,6 +2700,8 @@ impl RpcClient {
         let config = RpcSignaturesForAddressConfig {
             before: config.before.map(|signature| signature.to_string()),
             until: config.until.map(|signature| signature.to_string()),
+            to_slot: config.to_slot,
+            from_slot: config.from_slot,
             limit: config.limit,
             commitment: config.commitment,
             min_context_slot: None,

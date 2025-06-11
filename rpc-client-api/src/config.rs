@@ -231,6 +231,8 @@ pub struct RpcBlockSubscribeConfig {
 pub struct RpcSignaturesForAddressConfig {
     pub before: Option<String>, // Signature as base-58 string
     pub until: Option<String>,  // Signature as base-58 string
+    pub to_slot: Option<u64>, // Slot number
+    pub from_slot: Option<u64>, // Slot number
     pub limit: Option<usize>,
     #[serde(flatten)]
     pub commitment: Option<CommitmentConfig>,

@@ -948,6 +948,8 @@ impl LedgerStorage {
         address: &Pubkey,
         before_signature: Option<&Signature>,
         until_signature: Option<&Signature>,
+        to_slot: Option<u64>,
+        from_slot: Option<u64>,
         limit: usize,
     ) -> Result<
         Vec<(
@@ -964,9 +966,15 @@ impl LedgerStorage {
         let address_prefix = format!("{address}/");
 
         // Figure out where to start listing from based on `before_signature`
-        let (first_slot, before_transaction_index) = match before_signature {
-            None => (Slot::MAX, 0),
-            Some(before_signature) => {
+        // Parameter precedence and behavior:
+        // - No params: searches entire history (newest to oldest)
+        // - Only signatures: searches between specific transactions (exclusive boundaries)
+        // - Only slots: searches slot range inclusively (all txs in boundary slots)
+        // - Both provided: signatures take precedence, slots ignored
+        let (first_slot, before_transaction_index) = match (before_signature, to_slot) {
+            (None, Some(to)) => (to, 0),
+            (None, None) => (Slot::MAX, 0),
+            (Some(before_signature), _) => {
                 let TransactionInfo { slot, index, .. } = bigtable
                     .get_bincode_cell("tx", before_signature.to_string())
                     .await
@@ -980,9 +988,10 @@ impl LedgerStorage {
         };
 
         // Figure out where to end listing from based on `until_signature`
-        let (last_slot, until_transaction_index) = match until_signature {
-            None => (0, u32::MAX),
-            Some(until_signature) => {
+         let (last_slot, until_transaction_index) = match (until_signature, from_slot) {
+            (None, Some(from)) => (from, u32::MAX),
+            (None, None) => (0, u32::MAX),
+            (Some(until_signature), _) => {
                 let TransactionInfo { slot, index, .. } = bigtable
                     .get_bincode_cell("tx", until_signature.to_string())
                     .await

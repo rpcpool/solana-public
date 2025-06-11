@@ -2139,6 +2139,9 @@ pub fn process_transaction_history(
             before,
             until,
             limit: Some(limit),
+            // todo: support the cli querying
+            to_slot: None,
+            from_slot: None,
             commitment: Some(CommitmentConfig::confirmed()),
         },
     )?;
