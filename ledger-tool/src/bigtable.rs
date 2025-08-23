@@ -542,6 +542,8 @@ pub async fn transaction_history(
                 address,
                 before.as_ref(),
                 until.as_ref(),
+                None,
+                None,
                 limit.min(query_chunk_size),
             )
             .await?;

@@ -59,5 +59,7 @@ pub enum BlockstoreError {
     LegacyShred(Slot, u64),
     #[error("unable to read merkle root slot {0}, index {1}")]
     MissingMerkleRoot(Slot, u64),
+    #[error("invalid slot range: {0}..{1}")]
+    InvalidSlotRange(Slot, Slot),
 }
 pub type Result<T> = std::result::Result<T, BlockstoreError>;

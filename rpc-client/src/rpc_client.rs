@@ -100,6 +100,8 @@ impl SerializableTransaction for VersionedTransaction {
 pub struct GetConfirmedSignaturesForAddress2Config {
     pub before: Option<Signature>,
     pub until: Option<Signature>,
+    pub to_slot: Option<u64>,
+    pub from_slot: Option<u64>,
     pub limit: Option<usize>,
     pub commitment: Option<CommitmentConfig>,
 }
