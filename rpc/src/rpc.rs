@@ -3730,10 +3730,13 @@ pub mod rpc_full {
                         let (version, feature_set) = if let Some(version) =
                             cluster_info.get_node_version(contact_info.pubkey())
                         {
-                            (Some(version.to_string()), Some(version.feature_set))
+                            (Some(format!("{:?}", version)), Some(version.feature_set))
+                            // version will be displayed:
+                            // 2.2.15 (src:7aff93a2; feat:798020478, client:Agave)
                         } else {
                             (None, None)
                         };
+
                         Some(RpcContactInfo {
                             pubkey: contact_info.pubkey().to_string(),
                             gossip: contact_info.gossip(),
