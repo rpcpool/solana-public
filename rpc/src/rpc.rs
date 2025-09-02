@@ -3820,6 +3820,7 @@ pub mod rpc_full {
             debug!("send_transaction rpc request received");
             let RpcSendTransactionConfig {
                 skip_preflight,
+                skip_sanitize,
                 preflight_commitment,
                 encoding,
                 max_retries,
@@ -3844,32 +3845,52 @@ pub mod rpc_full {
                 min_context_slot,
             })?;
 
-            let transaction = sanitize_transaction(
-                unsanitized_tx,
-                preflight_bank,
-                preflight_bank.get_reserved_account_keys(),
-            )?;
-            let blockhash = *transaction.message().recent_blockhash();
-            let message_hash = *transaction.message_hash();
-            let signature = *transaction.signature();
+
+            let recent_blockhash = *unsanitized_tx.message.recent_blockhash();
+            let (signature, sanitized_tx) = if skip_preflight && skip_sanitize {
+                unsanitized_tx.sanitize().map_err(|_err| {
+                    Error::invalid_params(format!(
+                        "invalid transaction: {}",
+                        TransactionError::SanitizeFailure
+                    ))
+                })?;
+                (unsanitized_tx.signatures[0], None)
+            } else {
+                let tx = sanitize_transaction(
+                    unsanitized_tx,
+                    preflight_bank,
+                    preflight_bank.get_reserved_account_keys(),
+                )?;
+                (*tx.signature(), Some(tx))
+            };
 
             let mut last_valid_block_height = preflight_bank
-                .get_blockhash_last_valid_block_height(&blockhash)
+                .get_blockhash_last_valid_block_height(&recent_blockhash)
                 .unwrap_or(0);
 
-            let durable_nonce_info = transaction
-                .get_durable_nonce()
-                .map(|&pubkey| (pubkey, blockhash));
-            if durable_nonce_info.is_some() || (skip_preflight && last_valid_block_height == 0) {
-                // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
-                // It provides a fallback timeout for durable-nonce transaction retries in case of
-                // malicious packing of the retry queue. Durable-nonce transactions are otherwise
-                // retried until the nonce is advanced.
-                last_valid_block_height = preflight_bank.block_height() + MAX_PROCESSING_AGE as u64;
+            let mut durable_nonce_info = None;
+            if let Some(sanitized_tx) = &sanitized_tx {
+                durable_nonce_info = sanitized_tx
+                    .get_durable_nonce()
+                    .map(|&pubkey| (pubkey, recent_blockhash));
+                if durable_nonce_info.is_some() || (skip_preflight && last_valid_block_height == 0)
+                {
+                    // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
+                    // It provides a fallback timeout for durable-nonce transaction retries in case of
+                    // malicious packing of the retry queue. Durable-nonce transactions are otherwise
+                    // retried until the nonce is advanced.
+                    last_valid_block_height =
+                        preflight_bank.block_height() + MAX_PROCESSING_AGE as u64;
+                }
             }
 
+            let message_hash = *sanitized_tx.clone().unwrap().message_hash();
+
             if !skip_preflight {
-                verify_transaction(&transaction)?;
+                let Some(sanitized_tx) = sanitized_tx else {
+                    return Err(Error::invalid_params("sanitized transaction should exists"));
+                };
+                verify_transaction(&sanitized_tx)?;
 
                 if !meta.config.skip_preflight_health_check {
                     match meta.health.check() {
@@ -3904,7 +3925,7 @@ pub mod rpc_full {
                     post_balances: _,
                     pre_token_balances: _,
                     post_token_balances: _,
-                } = preflight_bank.simulate_transaction(&transaction, false)
+                } = preflight_bank.simulate_transaction(&sanitized_tx, false)
                 {
                     match err {
                         TransactionError::BlockhashNotFound => {
@@ -3941,7 +3962,7 @@ pub mod rpc_full {
                 meta,
                 message_hash,
                 signature,
-                blockhash,
+                recent_blockhash,
                 wire_transaction,
                 last_valid_block_height,
                 durable_nonce_info,
