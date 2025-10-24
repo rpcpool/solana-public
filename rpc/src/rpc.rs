@@ -3915,7 +3915,7 @@ pub mod rpc_full {
                 }
             }
 
-            let message_hash = *sanitized_tx.clone().unwrap().message_hash();
+            let message_hash = *sanitized_tx.as_ref().unwrap().message_hash();
 
             if !skip_preflight {
                 let Some(sanitized_tx) = sanitized_tx else {
