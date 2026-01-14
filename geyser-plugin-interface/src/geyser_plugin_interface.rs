@@ -191,6 +191,29 @@ pub enum ReplicaTransactionInfoVersions<'a> {
     V0_0_3(&'a ReplicaTransactionInfoV3<'a>),
 }
 
+/// Information about a transaction after deshredding (when entries are formed from shreds).
+/// This is sent before any execution occurs.
+/// Unlike ReplicaTransactionInfo, this does not include TransactionStatusMeta
+/// since execution has not happened yet.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ReplicaDeshredTransactionInfo<'a> {
+    /// The transaction signature, used for identifying the transaction.
+    pub signature: &'a Signature,
+
+    /// Indicates if the transaction is a simple vote transaction.
+    pub is_vote: bool,
+
+    /// The versioned transaction.
+    pub transaction: &'a VersionedTransaction,
+}
+
+/// A wrapper to future-proof ReplicaDeshredTransactionInfo handling.
+#[repr(u32)]
+pub enum ReplicaDeshredTransactionInfoVersions<'a> {
+    V0_0_1(&'a ReplicaDeshredTransactionInfo<'a>),
+}
+
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct ReplicaEntryInfo<'a> {
@@ -471,6 +494,18 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions) -> Result<()> {
         Ok(())
     }
+    
+    /// Called when a transaction is deshredded (entries formed from shreds).
+    /// This is triggered before any execution occurs. Unlike notify_transaction,
+    /// this does not include execution metadata (TransactionStatusMeta).
+    #[allow(unused_variables)]
+    fn notify_deshred_transaction(
+        &self,
+        transaction: ReplicaDeshredTransactionInfoVersions,
+        slot: Slot,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     /// Check if the plugin is interested in account data
     /// Default is true -- if the plugin is not interested in
@@ -498,6 +533,13 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     /// Default is false -- if the plugin is interested in
     /// entry data, return true.
     fn entry_notifications_enabled(&self) -> bool {
+        false
+    }
+
+    /// Check if the plugin is interested in deshred transaction data.
+    /// Default is false -- if the plugin is interested in receiving
+    /// transactions when they are deshredded, return true.
+    fn deshred_transaction_notifications_enabled(&self) -> bool {
         false
     }
 }
