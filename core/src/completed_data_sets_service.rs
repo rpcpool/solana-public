@@ -7,9 +7,17 @@
 use {
     crossbeam_channel::{Receiver, RecvTimeoutError, Sender},
     solana_entry::entry::Entry,
-    solana_ledger::blockstore::{Blockstore, CompletedDataSetInfo},
+    solana_ledger::{
+        blockstore::{Blockstore, CompletedDataSetInfo},
+        deshred_transaction_notifier_interface::DeshredTransactionNotifierArc,
+    },
     solana_rpc::{max_slots::MaxSlots, rpc_subscriptions::RpcSubscriptions},
+    solana_message::VersionedMessage,
     solana_signature::Signature,
+    solana_transaction::{
+        simple_vote_transaction_checker::is_simple_vote_transaction_impl,
+        versioned::VersionedTransaction,
+    },
     std::{
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -23,6 +31,20 @@ use {
 pub type CompletedDataSetsReceiver = Receiver<Vec<CompletedDataSetInfo>>;
 pub type CompletedDataSetsSender = Sender<Vec<CompletedDataSetInfo>>;
 
+/// Check if a versioned transaction is a simple vote transaction.
+/// This avoids cloning by extracting the required data directly.
+fn is_simple_vote_transaction(tx: &VersionedTransaction) -> bool {
+    let is_legacy = matches!(&tx.message, VersionedMessage::Legacy(_));
+    let (account_keys, instructions) = match &tx.message {
+        VersionedMessage::Legacy(msg) => (&msg.account_keys[..], &msg.instructions[..]),
+        VersionedMessage::V0(msg) => (&msg.account_keys[..], &msg.instructions[..]),
+    };
+    let instruction_programs = instructions
+        .iter()
+        .filter_map(|ix| account_keys.get(ix.program_id_index as usize));
+    is_simple_vote_transaction_impl(&tx.signatures, is_legacy, instruction_programs)
+}
+
 pub struct CompletedDataSetsService {
     thread_hdl: JoinHandle<()>,
 }
@@ -32,6 +54,7 @@ impl CompletedDataSetsService {
         completed_sets_receiver: CompletedDataSetsReceiver,
         blockstore: Arc<Blockstore>,
         rpc_subscriptions: Arc<RpcSubscriptions>,
+        deshred_transaction_notifier: Option<DeshredTransactionNotifierArc>,
         exit: Arc<AtomicBool>,
         max_slots: Arc<MaxSlots>,
     ) -> Self {
@@ -47,6 +70,7 @@ impl CompletedDataSetsService {
                         &completed_sets_receiver,
                         &blockstore,
                         &rpc_subscriptions,
+                        &deshred_transaction_notifier,
                         &max_slots,
                     ) {
                         break;
@@ -62,6 +86,7 @@ impl CompletedDataSetsService {
         completed_sets_receiver: &CompletedDataSetsReceiver,
         blockstore: &Blockstore,
         rpc_subscriptions: &RpcSubscriptions,
+        deshred_transaction_notifier: &Option<DeshredTransactionNotifierArc>,
         max_slots: &Arc<MaxSlots>,
     ) -> Result<(), RecvTimeoutError> {
         const RECV_TIMEOUT: Duration = Duration::from_secs(1);
@@ -69,6 +94,21 @@ impl CompletedDataSetsService {
             let CompletedDataSetInfo { slot, indices } = completed_data_set_info;
             match blockstore.get_entries_in_data_block(slot, indices, /*slot_meta:*/ None) {
                 Ok(entries) => {
+                    // Notify deshred transactions if notifier is enabled
+                    if let Some(notifier) = deshred_transaction_notifier {
+                        for entry in entries.iter() {
+                            for tx in &entry.transactions {
+                                if let Some(signature) = tx.signatures.first() {
+                                    let is_vote = is_simple_vote_transaction(tx);
+                                    notifier.notify_deshred_transaction(
+                                        slot, signature, is_vote, tx,
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // Existing: notify signatures for RPC subscriptions
                     let transactions = Self::get_transaction_signatures(entries);
                     if !transactions.is_empty() {
                         rpc_subscriptions.notify_signatures_received((slot, transactions));
