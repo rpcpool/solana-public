@@ -5,6 +5,7 @@ use {
         block_metadata_notifier_interface::BlockMetadataNotifierArc,
         entry_notifier::EntryNotifierImpl,
         geyser_plugin_manager::{GeyserPluginManager, GeyserPluginManagerRequest},
+        deshred_transaction_notifier::DeshredTransactionNotifierImpl,
         slot_status_notifier::SlotStatusNotifierImpl,
         slot_status_observer::SlotStatusObserver,
         transaction_notifier::TransactionNotifierImpl,
@@ -12,7 +13,10 @@ use {
     crossbeam_channel::Receiver,
     log::*,
     solana_accounts_db::accounts_update_notifier_interface::AccountsUpdateNotifier,
-    solana_ledger::entry_notifier_interface::EntryNotifierArc,
+    solana_ledger::{
+        entry_notifier_interface::EntryNotifierArc,
+        deshred_transaction_notifier_interface::DeshredTransactionNotifierArc,
+    },
     solana_rpc::{
         optimistically_confirmed_bank_tracker::SlotNotification,
         slot_status_notifier::SlotStatusNotifier,
@@ -36,6 +40,7 @@ pub struct GeyserPluginService {
     plugin_manager: Arc<RwLock<GeyserPluginManager>>,
     accounts_update_notifier: Option<AccountsUpdateNotifier>,
     transaction_notifier: Option<TransactionNotifierArc>,
+    deshred_transaction_notifier: Option<DeshredTransactionNotifierArc>,
     entry_notifier: Option<EntryNotifierArc>,
     block_metadata_notifier: Option<BlockMetadataNotifierArc>,
     slot_status_notifier: Option<SlotStatusNotifier>,
@@ -91,6 +96,9 @@ impl GeyserPluginService {
             plugin_manager.account_data_snapshot_notifications_enabled();
         let transaction_notifications_enabled =
             plugin_manager.transaction_notifications_enabled() || geyser_plugin_always_enabled;
+        let deshred_transaction_notifications_enabled =
+            plugin_manager.deshred_transaction_notifications_enabled()
+                || geyser_plugin_always_enabled;
         let entry_notifications_enabled =
             plugin_manager.entry_notifications_enabled() || geyser_plugin_always_enabled;
         let plugin_manager = Arc::new(RwLock::new(plugin_manager));
@@ -114,6 +122,15 @@ impl GeyserPluginService {
                 None
             };
 
+        let deshred_transaction_notifier: Option<DeshredTransactionNotifierArc> =
+            if deshred_transaction_notifications_enabled {
+                let deshred_transaction_notifier =
+                    DeshredTransactionNotifierImpl::new(plugin_manager.clone());
+                Some(Arc::new(deshred_transaction_notifier))
+            } else {
+                None
+            };
+
         let entry_notifier: Option<EntryNotifierArc> = if entry_notifications_enabled {
             let entry_notifier = EntryNotifierImpl::new(plugin_manager.clone());
             Some(Arc::new(entry_notifier))
@@ -127,6 +144,7 @@ impl GeyserPluginService {
             Option<SlotStatusNotifier>,
         ) = if account_data_notifications_enabled
             || transaction_notifications_enabled
+            || deshred_transaction_notifications_enabled
             || entry_notifications_enabled
         {
             let slot_status_notifier = SlotStatusNotifierImpl::new(plugin_manager.clone());
@@ -157,6 +175,7 @@ impl GeyserPluginService {
             plugin_manager,
             accounts_update_notifier,
             transaction_notifier,
+            deshred_transaction_notifier,
             entry_notifier,
             block_metadata_notifier,
             slot_status_notifier,
@@ -179,6 +198,10 @@ impl GeyserPluginService {
 
     pub fn get_transaction_notifier(&self) -> Option<TransactionNotifierArc> {
         self.transaction_notifier.clone()
+    }
+
+    pub fn get_deshred_transaction_notifier(&self) -> Option<DeshredTransactionNotifierArc> {
+        self.deshred_transaction_notifier.clone()
     }
 
     pub fn get_entry_notifier(&self) -> Option<EntryNotifierArc> {
