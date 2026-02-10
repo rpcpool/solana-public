@@ -5,6 +5,7 @@
 use {
     solana_clock::{Slot, UnixTimestamp},
     solana_hash::Hash,
+    solana_message::v0::LoadedAddresses,
     solana_signature::Signature,
     solana_transaction::{sanitized::SanitizedTransaction, versioned::VersionedTransaction},
     solana_transaction_status::{Reward, RewardsAndNumPartitions, TransactionStatusMeta},
@@ -206,6 +207,10 @@ pub struct ReplicaDeshredTransactionInfo<'a> {
 
     /// The versioned transaction.
     pub transaction: &'a VersionedTransaction,
+
+    /// Addresses loaded from address lookup tables for V0 transactions.
+    /// This is None for legacy transactions or if address resolution failed.
+    pub loaded_addresses: Option<&'a LoadedAddresses>,
 }
 
 /// A wrapper to future-proof ReplicaDeshredTransactionInfo handling.
