@@ -1,5 +1,6 @@
 use {
     solana_clock::Slot,
+    solana_message::v0::LoadedAddresses,
     solana_signature::Signature,
     solana_transaction::versioned::VersionedTransaction,
     std::sync::Arc,
@@ -14,6 +15,7 @@ pub trait DeshredTransactionNotifier {
         signature: &Signature,
         is_vote: bool,
         transaction: &VersionedTransaction,
+        loaded_addresses: Option<&LoadedAddresses>,
     );
 }
 
