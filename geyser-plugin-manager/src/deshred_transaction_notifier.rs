@@ -8,6 +8,7 @@ use {
     solana_clock::Slot,
     solana_ledger::deshred_transaction_notifier_interface::DeshredTransactionNotifier,
     solana_measure::measure::Measure,
+    solana_message::v0::LoadedAddresses,
     solana_metrics::*,
     solana_signature::Signature,
     solana_transaction::versioned::VersionedTransaction,
@@ -30,6 +31,7 @@ impl DeshredTransactionNotifier for DeshredTransactionNotifierImpl {
         signature: &Signature,
         is_vote: bool,
         transaction: &VersionedTransaction,
+        loaded_addresses: Option<&LoadedAddresses>,
     ) {
         let mut measure =
             Measure::start("geyser-plugin-notify_plugins_of_deshred_transaction_info");
@@ -37,6 +39,7 @@ impl DeshredTransactionNotifier for DeshredTransactionNotifierImpl {
             signature,
             is_vote,
             transaction,
+            loaded_addresses,
         );
 
         let plugin_manager = self.plugin_manager.read().unwrap();
@@ -87,11 +90,13 @@ impl DeshredTransactionNotifierImpl {
         signature: &'a Signature,
         is_vote: bool,
         transaction: &'a VersionedTransaction,
+        loaded_addresses: Option<&'a LoadedAddresses>,
     ) -> ReplicaDeshredTransactionInfo<'a> {
         ReplicaDeshredTransactionInfo {
             signature,
             is_vote,
             transaction,
+            loaded_addresses,
         }
     }
 }
