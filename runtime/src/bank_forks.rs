@@ -12,13 +12,13 @@ use {
     agave_votor_messages::migration::MigrationStatus,
     arc_swap::ArcSwap,
     log::*,
-    solana_clock::{BankId, Slot},
+    solana_clock::{BankId, MAX_PROCESSING_AGE, Slot},
     solana_hash::Hash,
     solana_measure::measure::Measure,
     solana_program_runtime::loaded_programs::{BlockRelation, ForkGraph},
     solana_unified_scheduler_logic::SchedulingMode,
     std::{
-        collections::{HashMap, HashSet, hash_map::Entry},
+        collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
         ops::Index,
         sync::{Arc, RwLock},
         time::Instant,
@@ -75,6 +75,7 @@ struct SetRootTimings {
 
 pub struct BankForks {
     banks: HashMap<Slot, BankWithScheduler>,
+    pub banks_frozen: BTreeMap<Slot, Arc<Bank>>,
     descendants: HashMap<Slot, HashSet<Slot>>,
     root: Slot,
     working_slot: Slot,
@@ -136,6 +137,7 @@ impl BankForks {
                 working_bank: Arc::new(ArcSwap::from(root_bank.clone())),
             },
             banks,
+            banks_frozen: Default::default(),
             descendants,
             highest_slot_at_startup: 0,
             scheduler_pool: None,
@@ -316,6 +318,13 @@ impl BankForks {
 
     pub fn remove(&mut self, slot: Slot) -> Option<BankWithScheduler> {
         let bank = self.banks.remove(&slot)?;
+        if bank.is_frozen() {
+            self.banks_frozen
+                .insert(bank.slot(), bank.clone_without_scheduler());
+            while self.banks_frozen.len() > MAX_PROCESSING_AGE {
+                self.banks_frozen.pop_first();
+            }
+        }
         for parent in bank.proper_ancestors() {
             let Entry::Occupied(mut entry) = self.descendants.entry(parent) else {
                 panic!("this should not happen!");
