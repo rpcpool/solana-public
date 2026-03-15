@@ -75,6 +75,7 @@ fn test_send_and_confirm_transactions_in_parallel_without_tpu_client() {
                 encoding: None,
                 max_retries: None,
                 min_context_slot: None,
+                skip_sanitize: true,
             },
         },
     );
@@ -146,6 +147,7 @@ fn test_send_and_confirm_transactions_in_parallel_with_tpu_client() {
                 encoding: None,
                 max_retries: None,
                 min_context_slot: None,
+                skip_sanitize: true,
             },
         },
     );
