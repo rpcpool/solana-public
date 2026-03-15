@@ -9911,6 +9911,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
+ "solana-account 4.3.0",
  "solana-account-decoder-client-types",
  "solana-address 2.6.0",
  "solana-clock",
@@ -9924,6 +9925,7 @@ dependencies = [
  "solana-transaction-error",
  "solana-transaction-status-client-types",
  "solana-version",
+ "spl-generic-token",
  "thiserror 2.0.18",
 ]
 
