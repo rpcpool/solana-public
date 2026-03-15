@@ -2384,14 +2384,27 @@ impl JsonRpcRequestProcessor {
     fn get_recent_prioritization_fees(
         &self,
         pubkeys: Vec<Pubkey>,
+        percentile: Option<u16>,
     ) -> Result<Vec<RpcPrioritizationFee>> {
-        let Some(prioritization_fee_cache) = self.prioritization_fee_cache.as_deref() else {
+        let Some(_prioritization_fee_cache) = self.prioritization_fee_cache.as_deref() else {
             error!("The PrioritizationFeeCache should always be available for the full RPC API");
             return Err(Error::internal_error());
         };
 
-        Ok(prioritization_fee_cache
-            .get_prioritization_fees(&pubkeys)
+        let cache = match percentile {
+            Some(percentile) => self
+                .prioritization_fee_cache
+                .as_ref()
+                .unwrap()
+                .get_prioritization_fees2(&pubkeys, percentile),
+            None => self
+                .prioritization_fee_cache
+                .as_ref()
+                .unwrap()
+                .get_prioritization_fees(&pubkeys),
+        };
+
+        Ok(cache
             .into_iter()
             .map(|(slot, prioritization_fee)| RpcPrioritizationFee {
                 slot,
@@ -3612,6 +3625,7 @@ pub mod rpc_full {
             &self,
             meta: Self::Metadata,
             pubkey_strs: Option<Vec<String>>,
+            config: Option<RpcRecentPrioritizationFeesConfig>,
         ) -> Result<Vec<RpcPrioritizationFee>>;
     }
 
@@ -4366,6 +4380,7 @@ pub mod rpc_full {
             &self,
             meta: Self::Metadata,
             pubkey_strs: Option<Vec<String>>,
+            config: Option<RpcRecentPrioritizationFeesConfig>,
         ) -> Result<Vec<RpcPrioritizationFee>> {
             let pubkey_strs = pubkey_strs.unwrap_or_default();
             debug!(
@@ -4381,7 +4396,17 @@ pub mod rpc_full {
                 .into_iter()
                 .map(|pubkey_str| verify_pubkey(&pubkey_str))
                 .collect::<Result<Vec<_>>>()?;
-            meta.get_recent_prioritization_fees(pubkeys)
+
+            let RpcRecentPrioritizationFeesConfig { percentile } = config.unwrap_or_default();
+            if let Some(percentile) = percentile {
+                if percentile > 10_000 {
+                    return Err(Error::invalid_params(
+                        "Percentile is too big; max value is 10000".to_owned(),
+                    ));
+                }
+            }
+
+            meta.get_recent_prioritization_fees(pubkeys, percentile)
         }
     }
 }
