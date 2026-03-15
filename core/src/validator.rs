@@ -1354,6 +1354,7 @@ impl Validator {
                         deshred_transaction_notifier.clone(),
                         exit.clone(),
                         max_slots.clone(),
+                        bank_forks.clone(),
                     );
                     (
                         Some(completed_data_sets_sender),
