@@ -3511,6 +3511,7 @@ pub mod rpc_full {
             meta: Self::Metadata,
             data: String,
             config: Option<RcpSanitizeTransactionConfig>,
+            enable_static_instruction_limit: bool,
         ) -> Result<()>;
 
         #[rpc(meta, name = "simulateTransaction")]
@@ -3815,6 +3816,7 @@ pub mod rpc_full {
             debug!("send_transaction rpc request received");
             let RpcSendTransactionConfig {
                 skip_preflight,
+                skip_sanitize,
                 preflight_commitment,
                 encoding,
                 max_retries,
@@ -3839,38 +3841,57 @@ pub mod rpc_full {
                 min_context_slot,
             })?;
 
-            let transaction = sanitize_transaction(
-                unsanitized_tx,
-                preflight_bank,
-                preflight_bank.get_reserved_account_keys(),
-                preflight_bank
-                    .feature_set
-                    .is_active(&agave_feature_set::static_instruction_limit::id()),
-                preflight_bank
-                    .feature_set
-                    .is_active(&agave_feature_set::limit_instruction_accounts::id()),
-            )?;
-            let blockhash = *transaction.message().recent_blockhash();
-            let message_hash = *transaction.message_hash();
-            let signature = *transaction.signature();
+            let recent_blockhash = *unsanitized_tx.message.recent_blockhash();
+            let (signature, sanitized_tx, message_hash) = if skip_preflight && skip_sanitize {
+                unsanitized_tx.sanitize().map_err(|_err| {
+                    Error::invalid_params(format!(
+                        "invalid transaction: {}",
+                        TransactionError::SanitizeFailure
+                    ))
+                })?;
+                let message_hash = unsanitized_tx.message.hash();
+                (unsanitized_tx.signatures[0], None, message_hash)
+            } else {
+                let tx = sanitize_transaction(
+                    unsanitized_tx,
+                    preflight_bank,
+                    preflight_bank.get_reserved_account_keys(),
+                    preflight_bank
+                        .feature_set
+                        .is_active(&agave_feature_set::static_instruction_limit::id()),
+                    preflight_bank
+                        .feature_set
+                        .is_active(&agave_feature_set::limit_instruction_accounts::id()),
+                )?;
+                let message_hash = *tx.message_hash();
+                (*tx.signature(), Some(tx), message_hash)
+            };
 
             let mut last_valid_block_height = preflight_bank
-                .get_blockhash_last_valid_block_height(&blockhash)
+                .get_blockhash_last_valid_block_height(&recent_blockhash)
                 .unwrap_or(0);
 
-            let durable_nonce_info = transaction
-                .get_durable_nonce()
-                .map(|&pubkey| (pubkey, blockhash));
-            if durable_nonce_info.is_some() || (skip_preflight && last_valid_block_height == 0) {
-                // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
-                // It provides a fallback timeout for durable-nonce transaction retries in case of
-                // malicious packing of the retry queue. Durable-nonce transactions are otherwise
-                // retried until the nonce is advanced.
-                last_valid_block_height = preflight_bank.block_height() + MAX_PROCESSING_AGE as u64;
+            let mut durable_nonce_info = None;
+            if let Some(sanitized_tx) = &sanitized_tx {
+                durable_nonce_info = sanitized_tx
+                    .get_durable_nonce()
+                    .map(|&pubkey| (pubkey, recent_blockhash));
+                if durable_nonce_info.is_some() || (skip_preflight && last_valid_block_height == 0)
+                {
+                    // While it uses a defined constant, this last_valid_block_height value is chosen arbitrarily.
+                    // It provides a fallback timeout for durable-nonce transaction retries in case of
+                    // malicious packing of the retry queue. Durable-nonce transactions are otherwise
+                    // retried until the nonce is advanced.
+                    last_valid_block_height =
+                        preflight_bank.block_height() + MAX_PROCESSING_AGE as u64;
+                }
             }
 
             if !skip_preflight {
-                let verification_error = transaction.verify().err();
+                let Some(sanitized_tx) = sanitized_tx else {
+                    return Err(Error::invalid_params("sanitized transaction should exists"));
+                };
+                let verification_error = sanitized_tx.verify().err();
 
                 if verification_error.is_none() && !meta.config.skip_preflight_health_check {
                     match meta.health.check() {
@@ -3892,12 +3913,6 @@ pub mod rpc_full {
                     }
                 }
 
-                let simulation_result = if let Some(err) = verification_error {
-                    TransactionSimulationResult::new_error(err)
-                } else {
-                    preflight_bank.simulate_transaction(&transaction, false)
-                };
-
                 if let TransactionSimulationResult {
                     result: Err(err),
                     logs,
@@ -3911,7 +3926,7 @@ pub mod rpc_full {
                     post_balances: _,
                     pre_token_balances: _,
                     post_token_balances: _,
-                } = simulation_result
+                } = preflight_bank.simulate_transaction(&sanitized_tx, false)
                 {
                     match err {
                         TransactionError::BlockhashNotFound => {
@@ -3948,7 +3963,7 @@ pub mod rpc_full {
                 meta,
                 message_hash,
                 signature,
-                blockhash,
+                recent_blockhash,
                 wire_transaction,
                 last_valid_block_height,
                 durable_nonce_info,
@@ -3961,6 +3976,7 @@ pub mod rpc_full {
             meta: Self::Metadata,
             data: String,
             config: Option<RcpSanitizeTransactionConfig>,
+            enable_static_instruction_limit: bool,
         ) -> Result<()> {
             let RcpSanitizeTransactionConfig {
                 sig_verify,
@@ -3985,8 +4001,7 @@ pub mod rpc_full {
                 unsanitized_tx,
                 bank,
                 bank.get_reserved_account_keys(),
-                bank.feature_set
-                    .is_active(&agave_feature_set::static_instruction_limit::id()),
+                enable_static_instruction_limit,
                 bank.feature_set
                     .is_active(&agave_feature_set::limit_instruction_accounts::id()),
             )?;
