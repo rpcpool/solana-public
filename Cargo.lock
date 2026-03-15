@@ -8670,6 +8670,8 @@ dependencies = [
  "solana-entry",
  "solana-hash 4.2.0",
  "solana-ledger",
+ "solana-measure",
+ "solana-metrics",
  "solana-pubkey 4.1.0",
  "solana-rpc",
  "solana-runtime",
