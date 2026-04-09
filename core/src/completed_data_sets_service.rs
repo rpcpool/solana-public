@@ -1,5 +1,8 @@
-//! [`CompletedDataSetsService`] is a hub, that runs different operations when a "completed data
-//! set", also known as a [`Vec<Entry>`], is received by the validator.
+//! [`CompletedDataSetsService`] is a hub that runs different operations when a completed data set
+//! is received by the validator.
+//!
+//! A completed data set is a contiguous range of data shreds whose combined payload deserializes
+//! to a single [`Vec<Entry>`].
 //!
 //! Currently, `WindowService` sends [`CompletedDataSetInfo`]s via a `completed_sets_receiver`
 //! provided to the [`CompletedDataSetsService`].
@@ -148,6 +151,8 @@ impl CompletedDataSetsService {
                                                total_data_sets: &mut u64,
                                                lut_transactions: &mut u64| {
             let CompletedDataSetInfo { slot, indices } = completed_data_set_info;
+            let completed_data_set_starting_shred_index = indices.start;
+            let completed_data_set_ending_shred_index_exclusive = indices.end;
             match blockstore.get_entries_in_data_block(slot, indices, /*slot_meta:*/ None) {
                 Ok(entries) => {
                     *total_data_sets += 1;
@@ -177,6 +182,8 @@ impl CompletedDataSetsService {
                                     let mut notify_measure = Measure::start("notify_deshred");
                                     notifier.notify_deshred_transaction(
                                         slot,
+                                        completed_data_set_starting_shred_index,
+                                        completed_data_set_ending_shred_index_exclusive,
                                         signature,
                                         is_vote,
                                         tx,
