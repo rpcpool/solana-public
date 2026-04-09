@@ -2,7 +2,7 @@
 use {
     crate::geyser_plugin_manager::GeyserPluginManager,
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        ReplicaDeshredTransactionInfo, ReplicaDeshredTransactionInfoVersions,
+        ReplicaDeshredTransactionInfoV2, ReplicaDeshredTransactionInfoVersions,
     },
     log::*,
     solana_clock::Slot,
@@ -28,32 +28,36 @@ impl DeshredTransactionNotifier for DeshredTransactionNotifierImpl {
     fn notify_deshred_transaction(
         &self,
         slot: Slot,
+        completed_data_set_starting_shred_index: u32,
+        completed_data_set_ending_shred_index_exclusive: u32,
         signature: &Signature,
         is_vote: bool,
         transaction: &VersionedTransaction,
         loaded_addresses: Option<&LoadedAddresses>,
     ) {
-        let mut measure =
-            Measure::start("geyser-plugin-notify_plugins_of_deshred_transaction_info");
-        let transaction_info = Self::build_replica_deshred_transaction_info(
-            signature,
-            is_vote,
-            transaction,
-            loaded_addresses,
-        );
-
         let plugin_manager = self.plugin_manager.read().unwrap();
 
         if plugin_manager.plugins.is_empty() {
             return;
         }
 
+        let mut measure =
+            Measure::start("geyser-plugin-notify_plugins_of_deshred_transaction_info");
+        let transaction_info = ReplicaDeshredTransactionInfoV2 {
+            signature,
+            is_vote,
+            transaction,
+            loaded_addresses,
+            completed_data_set_starting_shred_index,
+            completed_data_set_ending_shred_index_exclusive,
+        };
+
         for plugin in plugin_manager.plugins.iter() {
             if !plugin.deshred_transaction_notifications_enabled() {
                 continue;
             }
             match plugin.notify_deshred_transaction(
-                ReplicaDeshredTransactionInfoVersions::V0_0_1(&transaction_info),
+                ReplicaDeshredTransactionInfoVersions::V0_0_2(&transaction_info),
                 slot,
             ) {
                 Err(err) => {
@@ -84,19 +88,5 @@ impl DeshredTransactionNotifier for DeshredTransactionNotifierImpl {
 impl DeshredTransactionNotifierImpl {
     pub fn new(plugin_manager: Arc<RwLock<GeyserPluginManager>>) -> Self {
         Self { plugin_manager }
-    }
-
-    fn build_replica_deshred_transaction_info<'a>(
-        signature: &'a Signature,
-        is_vote: bool,
-        transaction: &'a VersionedTransaction,
-        loaded_addresses: Option<&'a LoadedAddresses>,
-    ) -> ReplicaDeshredTransactionInfo<'a> {
-        ReplicaDeshredTransactionInfo {
-            signature,
-            is_vote,
-            transaction,
-            loaded_addresses,
-        }
     }
 }
